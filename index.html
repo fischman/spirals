@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Natural Spirals</title>
+<style>
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #3f3f46; --hi: #facc15; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  h1 { margin: 1.2rem 0 0.3rem; font-size: 1.5rem; color: var(--accent); letter-spacing: 0.04em; }
+  .subtitle { font-size: 0.82rem; color: var(--dim); margin-bottom: 1rem; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 0.7rem 1.4rem; justify-content: center;
+              margin-bottom: 0.8rem; padding: 0 1rem; }
+  .controls label { font-size: 0.75rem; color: var(--dim); display: flex; flex-direction: column;
+                    align-items: center; gap: 0.25rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  select, input[type=range] { background: #1a1a22; color: var(--fg); border: 1px solid var(--dim);
+                              border-radius: 6px; padding: 0.35rem 0.55rem; font-size: 0.82rem; }
+  select:focus, input:focus { outline: 1px solid var(--accent); }
+  input[type=range] { width: 120px; accent-color: var(--accent); }
+  .range-val { font-variant-numeric: tabular-nums; color: var(--fg); font-size: 0.78rem; }
+
+  canvas { border-radius: 10px; background: #111117; cursor: crosshair; max-width: 100%; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--dim); }
+  .legend span { display: flex; align-items: center; gap: 0.3rem; }
+  .legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .info { margin: 0.5rem 0 1.5rem; font-size: 0.75rem; color: var(--dim); max-width: 640px;
+          text-align: center; line-height: 1.55; padding: 0 1rem; }
+  .info b { color: var(--fg); }
+
+  .tooltip { position: fixed; pointer-events: none; background: #1a1a22ee; color: var(--fg);
+             border: 1px solid var(--dim); border-radius: 6px; padding: 0.35rem 0.55rem;
+             font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap;
+             display: none; z-index: 10; }
+  .tooltip .tn { color: var(--hi); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>&#127744; Natural Spirals</h1>
+<p class="subtitle">Points at integer arc-length from the origin</p>
+
+<div class="controls">
+  <label>Spiral
+    <select id="spiralType">
+      <option value="golden">Golden (Fibonacci)</option>
+      <option value="archimedean" selected>Archimedean</option>
+      <option value="fermat">Fermat&rsquo;s</option>
+      <option value="hyperbolic">Hyperbolic</option>
+      <option value="lituus">Lituus</option>
+    </select>
+  </label>
+  <label>Highlight
+    <select id="subset">
+      <option value="all">All integers</option>
+      <option value="odd">Odd</option>
+      <option value="even">Even</option>
+      <option value="squares">Perfect squares</option>
+      <option value="primes" selected>Primes</option>
+      <option value="fibonacci">Fibonacci</option>
+      <option value="triangular">Triangular</option>
+    </select>
+  </label>
+  <label>Max arc-length
+    <input type="range" id="maxDist" min="20" max="600" value="150">
+    <span class="range-val" id="maxDistVal">150</span>
+  </label>
+  <label>Turns
+    <input type="range" id="turns" min="2" max="40" value="14">
+    <span class="range-val" id="turnsVal">14</span>
+  </label>
+</div>
+
+<canvas id="c" width="720" height="720"></canvas>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--accent)"></span> spiral curve</span>
+  <span><span class="dot" style="background:var(--hi)"></span> highlighted point</span>
+  <span><span class="dot" style="background:var(--dim)"></span> other integer point</span>
+</div>
+<p class="info" id="infoText"></p>
+<div class="tooltip" id="tip"></div>
+
+<script>
+"use strict";
+
+/* ── number-theoretic helpers ── */
+function isPrime(n) {
+  if (n < 2) return false;
+  if (n < 4) return true;
+  if (n % 2 === 0 || n % 3 === 0) return false;
+  for (let i = 5; i * i <= n; i += 6)
+    if (n % i === 0 || n % (i + 2) === 0) return false;
+  return true;
+}
+function fibSet(max) {
+  const s = new Set(); let a = 1, b = 1;
+  while (a <= max) { s.add(a); [a, b] = [b, a + b]; }
+  return s;
+}
+function isSquare(n)      { const s = Math.round(Math.sqrt(n)); return s * s === n; }
+function isTriangular(n)  { const d = 8 * n + 1, s = Math.round(Math.sqrt(d)); return s * s === d; }
+
+function inSubset(n, subset, fib) {
+  switch (subset) {
+    case 'all':        return true;
+    case 'odd':        return n % 2 === 1;
+    case 'even':       return n % 2 === 0;
+    case 'squares':    return isSquare(n);
+    case 'primes':     return isPrime(n);
+    case 'fibonacci':  return fib.has(n);
+    case 'triangular': return isTriangular(n);
+  }
+}
+
+/* ── spiral definitions: r(θ) ── */
+const PHI = (1 + Math.sqrt(5)) / 2;
+const SPIRALS = {
+  golden: {
+    name: 'Golden Spiral',
+    desc: 'Logarithmic spiral whose growth factor is the golden ratio \u03c6. Seen in nautilus shells, hurricanes, and galaxies.',
+    r: th => 0.3 * Math.pow(PHI, th * 2 / Math.PI),
+  },
+  archimedean: {
+    name: 'Archimedean Spiral',
+    desc: 'Constant separation between turns. Found in watch springs, rolled-up rugs, and coiled ropes.',
+    r: th => 1.8 * th,
+  },
+  fermat: {
+    name: "Fermat\u2019s Spiral",
+    desc: 'r\u2009=\u2009a\u221a\u03b8. Models phyllotaxis \u2014 the arrangement of seeds in sunflower heads and leaves on stems.',
+    r: th => 4.5 * Math.sqrt(th),
+  },
+  hyperbolic: {
+    name: 'Hyperbolic Spiral',
+    desc: 'r\u2009=\u2009a/\u03b8. Appears in the path of an object moving at constant speed toward a rotating point.',
+    r: th => 40 / Math.max(th, 0.25),
+  },
+  lituus: {
+    name: 'Lituus',
+    desc: 'r\u2009=\u2009a/\u221a\u03b8. Named after an ancient Roman curved staff; describes certain magnetic field geometries.',
+    r: th => 28 / Math.sqrt(Math.max(th, 0.15)),
+  },
+};
+
+/* ── arc-length integration ── */
+function computeArcPoints(fn, maxArcLen, maxTheta) {
+  const dt = 0.0008;
+  let theta = 0.01, s = 0, prevR = fn(theta);
+  const points = [];
+  let nextN = 1;
+
+  while (theta < maxTheta && nextN <= maxArcLen) {
+    const newTheta = theta + dt;
+    const newR = fn(newTheta);
+    const dr = newR - prevR;
+    const ds = Math.sqrt(dr * dr + prevR * prevR * dt * dt);
+    const newS = s + ds;
+
+    while (nextN <= maxArcLen && newS >= nextN) {
+      const frac = (nextN - s) / (newS - s);
+      const t = theta + frac * dt;
+      const r = fn(t);
+      points.push({ n: nextN, x: r * Math.cos(t), y: r * Math.sin(t), theta: t });
+      nextN++;
+    }
+    s = newS;
+    theta = newTheta;
+    prevR = newR;
+  }
+  return points;
+}
+
+/* ── canvas setup ── */
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const dpr    = window.devicePixelRatio || 1;
+const CSS_W  = 720, CSS_H = 720;
+canvas.width  = CSS_W * dpr;
+canvas.height = CSS_H * dpr;
+canvas.style.width  = CSS_W + 'px';
+canvas.style.height = CSS_H + 'px';
+ctx.scale(dpr, dpr);
+const CX = CSS_W / 2, CY = CSS_H / 2;
+
+const tipEl = document.getElementById('tip');
+
+/* ── drawing state (cached for hover) ── */
+let drawnPts = [];   // screen-space points for hit-testing
+let hoveredIdx = -1;
+
+function draw() {
+  const spiralKey = document.getElementById('spiralType').value;
+  const subset    = document.getElementById('subset').value;
+  const maxDist   = +document.getElementById('maxDist').value;
+  const turnCount = +document.getElementById('turns').value;
+  const spiral    = SPIRALS[spiralKey];
+  const fn        = spiral.r;
+  const maxTheta  = turnCount * 2 * Math.PI;
+
+  document.getElementById('maxDistVal').textContent = maxDist;
+  document.getElementById('turnsVal').textContent   = turnCount;
+
+  const pts = computeArcPoints(fn, maxDist, maxTheta);
+  const fib = fibSet(maxDist);
+
+  /* scale to fit points */
+  let maxR = 0;
+  for (const p of pts) maxR = Math.max(maxR, Math.hypot(p.x, p.y));
+  if (maxR === 0) maxR = fn(maxTheta);
+  const scale = (Math.min(CSS_W, CSS_H) / 2 - 50) / (maxR * 1.12 || 1);
+
+  /* curve samples up to last point */
+  const lastTh = pts.length > 0 ? pts[pts.length - 1].theta * 1.06 : maxTheta;
+  const STEPS  = 5000;
+  const curve  = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const th = 0.01 + (lastTh - 0.01) * i / STEPS;
+    const r = fn(th);
+    curve.push([r * Math.cos(th), r * Math.sin(th)]);
+  }
+
+  ctx.clearRect(0, 0, CSS_W, CSS_H);
+
+  /* grid rings */
+  ctx.strokeStyle = '#1c1c24';
+  ctx.lineWidth = 0.5;
+  const ringStep = 60;
+  for (let gr = ringStep; gr < CSS_W; gr += ringStep) {
+    ctx.beginPath(); ctx.arc(CX, CY, gr, 0, Math.PI * 2); ctx.stroke();
+  }
+  /* axes */
+  ctx.beginPath(); ctx.moveTo(0, CY); ctx.lineTo(CSS_W, CY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(CX, 0); ctx.lineTo(CX, CSS_H); ctx.stroke();
+
+  /* spiral curve */
+  ctx.strokeStyle = '#7dd3fc30';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let i = 0; i < curve.length; i++) {
+    const sx = CX + curve[i][0] * scale, sy = CY - curve[i][1] * scale;
+    i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+  }
+  ctx.stroke();
+
+  /* origin */
+  ctx.fillStyle = '#7dd3fc';
+  ctx.beginPath(); ctx.arc(CX, CY, 3, 0, Math.PI * 2); ctx.fill();
+
+  /* points */
+  drawnPts = [];
+  const isSparse = ['squares', 'primes', 'fibonacci', 'triangular'].includes(subset);
+
+  for (const p of pts) {
+    const sx  = CX + p.x * scale;
+    const sy  = CY - p.y * scale;
+    const hit = inSubset(p.n, subset, fib);
+    drawnPts.push({ sx, sy, n: p.n, hit });
+
+    if (hit) {
+      ctx.fillStyle   = '#facc15';
+      ctx.shadowColor = '#facc1566';
+      ctx.shadowBlur  = 10;
+      ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = '#3f3f4666';
+      ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /* labels for sparse subsets */
+  if (isSparse) {
+    ctx.font = '11px system-ui';
+    ctx.fillStyle = '#facc15bb';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    for (const dp of drawnPts) {
+      if (!dp.hit) continue;
+      ctx.fillText(dp.n, dp.sx + 7, dp.sy - 5);
+    }
+  }
+
+  /* hovered point ring */
+  if (hoveredIdx >= 0 && hoveredIdx < drawnPts.length) {
+    const hp = drawnPts[hoveredIdx];
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(hp.sx, hp.sy, 8, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  /* info */
+  const highlighted = pts.filter(p => inSubset(p.n, subset, fib)).length;
+  document.getElementById('infoText').innerHTML =
+    `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+    `${pts.length} integer arc-length points, <b>${highlighted}</b> highlighted (${subset}).`;
+}
+
+/* ── hover / tooltip ── */
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (CSS_W / rect.width);
+  const my = (e.clientY - rect.top)  * (CSS_H / rect.height);
+
+  let best = -1, bestD = 14;
+  for (let i = 0; i < drawnPts.length; i++) {
+    const d = Math.hypot(drawnPts[i].sx - mx, drawnPts[i].sy - my);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+
+  if (best !== hoveredIdx) {
+    hoveredIdx = best;
+    draw();
+  }
+
+  if (best >= 0) {
+    const p = drawnPts[best];
+    tipEl.style.display = 'block';
+    tipEl.style.left = (e.clientX + 14) + 'px';
+    tipEl.style.top  = (e.clientY - 10) + 'px';
+    tipEl.innerHTML  = `<span class="tn">n = ${p.n}</span>`;
+  } else {
+    tipEl.style.display = 'none';
+  }
+});
+canvas.addEventListener('mouseleave', () => {
+  hoveredIdx = -1;
+  tipEl.style.display = 'none';
+  draw();
+});
+
+/* ── controls ── */
+for (const el of document.querySelectorAll('select, input'))
+  el.addEventListener('input', () => { hoveredIdx = -1; draw(); });
+
+draw();
+</script>
+</body>
+</html>
