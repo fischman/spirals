@@ -548,9 +548,13 @@ window.addEventListener('keydown', e => {
 /* ── hash navigation ── */
 window.addEventListener('hashchange', () => { loadHash(); hoveredIdx = -1; draw(); });
 
-window.addEventListener('resize', draw);
+/* ── sizing: use ResizeObserver so canvas tracks wrap accurately ── */
+let rafId = 0;
+function schedDraw() { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); }
+new ResizeObserver(schedDraw).observe(wrap);
+
 loadHash();
-draw();
+schedDraw();
 pushHash();
 </script>
 </body>
