@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Natural Spirals</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 16 C16 12,20 10,22 12 C25 15,23 21,18 22 C12 23,8 18,10 13 C12 6,20 4,25 8 C31 13,28 24,20 27 C11 30,4 22,6 13 C8 3,18 -1,26 4' fill='none' stroke='%237dd3fc' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
+  head, style, script { display: none !important; }
   :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15; --grid: #1e1e28; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  head, style, script { display: none !important; }
   html, body { height: 100%; overflow: hidden; }
   body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif;
          display: flex; flex-direction: column; align-items: center; }
@@ -33,7 +34,7 @@
   .legend { display: flex; flex-wrap: wrap; gap: 0.7rem; font-size: 0.68rem; color: var(--dim); }
   .legend span { display: flex; align-items: center; gap: 0.3rem; }
   .legend .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .info { font-size: 0.7rem; color: var(--dim); max-width: 640px; text-align: center; line-height: 1.45; }
+  .info { font-size: 0.7rem; color: var(--dim); max-width: 700px; text-align: center; line-height: 1.45; }
   .info b { color: var(--fg); }
 
   .tooltip { position: fixed; pointer-events: none; background: #1a1a22ee; color: var(--fg);
@@ -53,11 +54,13 @@
 <div class="controls">
   <label>Spiral
     <select id="spiralType">
-      <option value="golden">Golden (Fibonacci)</option>
       <option value="archimedean" selected>Archimedean</option>
       <option value="fermat">Fermat&rsquo;s</option>
-      <option value="hyperbolic">Hyperbolic</option>
-      <option value="lituus">Lituus</option>
+      <option value="golden">Golden (Fibonacci)</option>
+      <option value="theodorus">Theodorus</option>
+      <option value="sacks">Sacks</option>
+      <option value="square">Square</option>
+      <option value="hexagonal">Hexagonal</option>
     </select>
   </label>
   <label>Highlight
@@ -79,7 +82,7 @@
 
 <div class="footer">
   <div class="legend">
-    <span><span class="dot" style="background:var(--accent)"></span> spiral curve</span>
+    <span><span class="dot" style="background:var(--accent)"></span> spiral path</span>
     <span><span class="dot" style="background:var(--hi)"></span> highlighted point</span>
     <span><span class="dot" style="background:var(--dim)"></span> other integer point</span>
   </div>
@@ -104,8 +107,8 @@ function fibSet(max) {
   while (a <= max) { s.add(a); [a, b] = [b, a + b]; }
   return s;
 }
-function isSquare(n)      { const s = Math.round(Math.sqrt(n)); return s * s === n; }
-function isTriangular(n)  { const d = 8 * n + 1, s = Math.round(Math.sqrt(d)); return s * s === d; }
+function isSquare(n)     { const s = Math.round(Math.sqrt(n)); return s * s === n; }
+function isTriangular(n) { const d = 8 * n + 1, s = Math.round(Math.sqrt(d)); return s * s === d; }
 
 function inSubset(n, subset, fib) {
   switch (subset) {
@@ -119,107 +122,217 @@ function inSubset(n, subset, fib) {
   }
 }
 
-/* ── spiral definitions: r(θ) ── */
-const PHI = (1 + Math.sqrt(5)) / 2;
-const SPIRALS = {
-  golden: {
-    name: 'Golden Spiral',
-    desc: 'Logarithmic spiral whose growth factor is the golden ratio \u03c6. Seen in nautilus shells, hurricanes, and galaxies.',
-    r: th => 0.3 * Math.pow(PHI, th * 2 / Math.PI),
-  },
-  archimedean: {
-    name: 'Archimedean Spiral',
-    desc: 'Constant separation between turns. Found in watch springs, rolled-up rugs, and coiled ropes.',
-    r: th => 1.8 * th,
-  },
-  fermat: {
-    name: "Fermat\u2019s Spiral",
-    desc: 'r\u2009=\u2009a\u221a\u03b8. Models phyllotaxis \u2014 the arrangement of seeds in sunflower heads and leaves on stems.',
-    r: th => 4.5 * Math.sqrt(th),
-  },
-  hyperbolic: {
-    name: 'Hyperbolic Spiral',
-    desc: 'r\u2009=\u2009a/\u03b8. Appears in the path of an object moving at constant speed toward a rotating point.',
-    r: th => 40 / Math.max(th, 0.25),
-  },
-  lituus: {
-    name: 'Lituus',
-    desc: 'r\u2009=\u2009a/\u221a\u03b8. Named after an ancient Roman curved staff; describes certain magnetic field geometries.',
-    r: th => 28 / Math.sqrt(Math.max(th, 0.15)),
-  },
-};
+/* ══════════════════════════════════════════
+   Spiral definitions
+   Each spiral exposes:
+     name, desc, computePoints(maxN) → [{n, x, y}, …]
+   and optionally a curve(pts) → [[x,y], …] for the connecting path.
+   ══════════════════════════════════════════ */
 
-/* ── arc-length integration ── */
-function computeArcPoints(fn, maxArcLen, maxTheta) {
+const PHI = (1 + Math.sqrt(5)) / 2;
+
+/* — helper: arc-length integration for smooth r(θ) spirals — */
+function arcLenPoints(fn, maxN, maxTurns) {
+  const maxTheta = maxTurns * 2 * Math.PI;
   const dt = 0.0008;
   let theta = 0.01, s = 0, prevR = fn(theta);
-  const points = [];
+  const pts = [];
   let nextN = 1;
-
-  while (theta < maxTheta && nextN <= maxArcLen) {
-    const newTheta = theta + dt;
-    const newR = fn(newTheta);
-    const dr = newR - prevR;
+  while (theta < maxTheta && nextN <= maxN) {
+    const nt = theta + dt;
+    const nr = fn(nt);
+    const dr = nr - prevR;
     const ds = Math.sqrt(dr * dr + prevR * prevR * dt * dt);
-    const newS = s + ds;
-
-    while (nextN <= maxArcLen && newS >= nextN) {
-      const frac = (nextN - s) / (newS - s);
+    const ns = s + ds;
+    while (nextN <= maxN && ns >= nextN) {
+      const frac = (nextN - s) / (ns - s);
       const t = theta + frac * dt;
       const r = fn(t);
-      points.push({ n: nextN, x: r * Math.cos(t), y: r * Math.sin(t), theta: t });
+      pts.push({ n: nextN, x: r * Math.cos(t), y: r * Math.sin(t) });
       nextN++;
     }
-    s = newS;
-    theta = newTheta;
-    prevR = newR;
+    s = ns; theta = nt; prevR = nr;
   }
-  return points;
+  return pts;
 }
 
-/* ── measure how much arc-length fits in `turns` turns for a spiral ── */
-function measureArcLen(fn, maxTheta) {
+/* Estimate turns needed for a given arc-length */
+function turnsForArc(fn, target, limit) {
   const dt = 0.002;
   let theta = 0.01, s = 0, prevR = fn(theta);
-  while (theta < maxTheta) {
-    const newTheta = theta + dt;
-    const newR = fn(newTheta);
-    const dr = newR - prevR;
+  const mx = limit * 2 * Math.PI;
+  while (theta < mx && s < target) {
+    const nt = theta + dt;
+    const nr = fn(nt);
+    const dr = nr - prevR;
     s += Math.sqrt(dr * dr + prevR * prevR * dt * dt);
-    theta = newTheta;
-    prevR = newR;
-  }
-  return s;
-}
-
-/* ── find how many turns are needed for `targetArc` arc-length ── */
-function turnsForArc(fn, targetArc, maxTurnsLimit) {
-  const dt = 0.002;
-  let theta = 0.01, s = 0, prevR = fn(theta);
-  const limit = maxTurnsLimit * 2 * Math.PI;
-  while (theta < limit && s < targetArc) {
-    const newTheta = theta + dt;
-    const newR = fn(newTheta);
-    const dr = newR - prevR;
-    s += Math.sqrt(dr * dr + prevR * prevR * dt * dt);
-    theta = newTheta;
-    prevR = newR;
+    theta = nt; prevR = nr;
   }
   return Math.max(2, Math.ceil(theta / (2 * Math.PI)));
 }
 
-/* ── canvas sizing ── */
-const canvas   = document.getElementById('c');
-const ctx      = canvas.getContext('2d');
-const wrap     = document.querySelector('.canvas-wrap');
-const dpr      = window.devicePixelRatio || 1;
-const tipEl    = document.getElementById('tip');
+function smoothSpiral(name, desc, fn, turnLimit) {
+  return {
+    name, desc,
+    computePoints(maxN) {
+      const turns = turnsForArc(fn, maxN, turnLimit) + 1;
+      return arcLenPoints(fn, maxN, turns);
+    },
+    curve(pts) {
+      if (!pts.length) return [];
+      const lastTh = Math.atan2(pts[pts.length - 1].y, pts[pts.length - 1].x);
+      /* Walk θ to approximate the last point's angle (unwrap) */
+      let endTh = 0.01;
+      const dt2 = 0.01;
+      let prevR = fn(0.01);
+      let s = 0;
+      while (s < pts[pts.length - 1].n * 1.02 && endTh < 500) {
+        const nt = endTh + dt2;
+        const nr = fn(nt);
+        const dr = nr - prevR;
+        s += Math.sqrt(dr * dr + prevR * prevR * dt2 * dt2);
+        endTh = nt; prevR = nr;
+      }
+      const c = [];
+      const STEPS = Math.min(8000, Math.max(2000, pts.length * 20));
+      for (let i = 0; i <= STEPS; i++) {
+        const th = 0.01 + (endTh - 0.01) * i / STEPS;
+        const r = fn(th);
+        c.push([r * Math.cos(th), r * Math.sin(th)]);
+      }
+      return c;
+    },
+  };
+}
+
+const SPIRALS = {
+  archimedean: smoothSpiral(
+    'Archimedean Spiral',
+    'Constant separation between turns. Found in watch springs, rolled-up rugs, and coiled ropes.',
+    th => 1.8 * th, 200,
+  ),
+  fermat: smoothSpiral(
+    "Fermat\u2019s Spiral",
+    'r\u2009=\u2009a\u221a\u03b8. Models phyllotaxis — the arrangement of seeds in sunflower heads and leaves on stems.',
+    th => 4.5 * Math.sqrt(th), 200,
+  ),
+  golden: smoothSpiral(
+    'Golden Spiral',
+    'Logarithmic spiral whose growth factor is the golden ratio φ. Seen in nautilus shells, hurricanes, and galaxies.',
+    th => 0.3 * Math.pow(PHI, th * 2 / Math.PI), 200,
+  ),
+
+  /* ── Theodorus spiral ── */
+  theodorus: {
+    name: 'Spiral of Theodorus',
+    desc: 'Built from right triangles — each step has length 1, turning by arctan(1/√n). Constructed by Theodorus of Cyrene to prove irrationality of √3…√17.',
+    computePoints(maxN) {
+      const pts = [];
+      let angle = 0;
+      for (let k = 1; k <= maxN; k++) {
+        angle += Math.atan(1 / Math.sqrt(k));
+        const r = Math.sqrt(k + 1);
+        pts.push({ n: k, x: r * Math.cos(angle), y: r * Math.sin(angle) });
+      }
+      return pts;
+    },
+    curve(pts) { return pts.map(p => [p.x, p.y]); },
+  },
+
+  /* ── Sacks spiral ── */
+  sacks: {
+    name: 'Sacks Spiral',
+    desc: 'Point n placed at angle 2π√n, radius √n. Designed by Robert Sacks to reveal prime patterns — primes fall on distinct curves.',
+    computePoints(maxN) {
+      const pts = [];
+      for (let k = 1; k <= maxN; k++) {
+        const sq = Math.sqrt(k);
+        const angle = 2 * Math.PI * sq;
+        pts.push({ n: k, x: sq * Math.cos(angle), y: sq * Math.sin(angle) });
+      }
+      return pts;
+    },
+    curve(pts) {
+      /* Draw a smooth Archimedean-ish guide curve */
+      if (!pts.length) return [];
+      const maxSq = Math.sqrt(pts[pts.length - 1].n) * 1.02;
+      const c = [];
+      const STEPS = Math.min(6000, Math.max(1000, pts.length * 4));
+      for (let i = 0; i <= STEPS; i++) {
+        const sq = maxSq * i / STEPS;
+        const angle = 2 * Math.PI * sq;
+        c.push([sq * Math.cos(angle), sq * Math.sin(angle)]);
+      }
+      return c;
+    },
+  },
+
+  /* ── Square spiral ── */
+  square: {
+    name: 'Square Spiral',
+    desc: 'Right-angle turns with growing segments — the path of the Ulam spiral. Primes cluster along diagonals in striking patterns.',
+    computePoints(maxN) {
+      const dirs = [[1,0],[0,1],[-1,0],[0,-1]];
+      const pts = [];
+      let x = 0, y = 0, n = 0, segLen = 1, di = 0, segCount = 0;
+      while (n < maxN) {
+        for (let s = 0; s < segLen && n < maxN; s++) {
+          x += dirs[di][0]; y += dirs[di][1]; n++;
+          pts.push({ n, x, y });
+        }
+        di = (di + 1) % 4;
+        segCount++;
+        if (segCount % 2 === 0) segLen++;
+      }
+      return pts;
+    },
+    curve(pts) { return pts.map(p => [p.x, p.y]); },
+  },
+
+  /* ── Hexagonal spiral ── */
+  hexagonal: {
+    name: 'Hexagonal Spiral',
+    desc: 'Path spiraling outward on a hex grid — each step is unit length with 60° turns. Used in cellular automata and game boards.',
+    computePoints(maxN) {
+      const S3 = Math.sqrt(3) / 2;
+      const dirs = [[1,0],[0.5,S3],[-0.5,S3],[-1,0],[-0.5,-S3],[0.5,-S3]];
+      const pts = [];
+      let x = 0, y = 0, n = 0, ring = 1;
+      while (n < maxN) {
+        /* step east to enter new ring */
+        x += dirs[0][0]; y += dirs[0][1]; n++;
+        pts.push({ n, x, y });
+        if (n >= maxN) break;
+        /* traverse 6 sides of the ring */
+        for (let side = 0; side < 6 && n < maxN; side++) {
+          const d = dirs[(side + 2) % 6];
+          const steps = (side === 5) ? ring - 1 : ring;
+          for (let s = 0; s < steps && n < maxN; s++) {
+            x += d[0]; y += d[1]; n++;
+            pts.push({ n, x, y });
+          }
+        }
+        ring++;
+      }
+      return pts;
+    },
+    curve(pts) { return pts.map(p => [p.x, p.y]); },
+  },
+};
+
+/* ══════════════════════════════════════════
+   Canvas sizing
+   ══════════════════════════════════════════ */
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.querySelector('.canvas-wrap');
+const dpr    = window.devicePixelRatio || 1;
+const tipEl  = document.getElementById('tip');
 
 let cssW = 100, cssH = 100;
-
 function sizeCanvas() {
   const r = wrap.getBoundingClientRect();
-  const sz = Math.floor(Math.min(r.width, r.height)) - 4; // small padding
+  const sz = Math.floor(Math.min(r.width, r.height)) - 4;
   cssW = sz; cssH = sz;
   canvas.width  = sz * dpr;
   canvas.height = sz * dpr;
@@ -229,55 +342,31 @@ function sizeCanvas() {
 }
 
 /* ── zoom state ── */
-const MIN_ARC = 10, MAX_ARC = 2000, MAX_TURNS_LIMIT = 80;
+const MIN_ARC = 8;
 let arcLen = 150;
 
-function spiralFn() { return SPIRALS[document.getElementById('spiralType').value].r; }
-
-/* Derive turns from current arcLen for the active spiral */
-function syncTurns() {
-  return turnsForArc(spiralFn(), arcLen, MAX_TURNS_LIMIT);
-}
-
-/* Derive arcLen from a given turn count */
-function syncArc(turns) {
-  return Math.round(Math.min(MAX_ARC, measureArcLen(spiralFn(), turns * 2 * Math.PI)));
-}
-
 /* ── drawing state ── */
-let drawnPts  = [];
+let drawnPts   = [];
 let hoveredIdx = -1;
 
 function draw() {
   sizeCanvas();
-
   const spiralKey = document.getElementById('spiralType').value;
   const subset    = document.getElementById('subset').value;
   const spiral    = SPIRALS[spiralKey];
-  const fn        = spiral.r;
-  const turns     = syncTurns();
-  const maxTheta  = turns * 2 * Math.PI;
-
   const CX = cssW / 2, CY = cssH / 2;
 
-  const pts = computeArcPoints(fn, arcLen, maxTheta);
+  const pts = spiral.computePoints(arcLen);
   const fib = fibSet(arcLen);
 
-  /* scale to fit points */
+  /* scale to fit */
   let maxR = 0;
   for (const p of pts) maxR = Math.max(maxR, Math.hypot(p.x, p.y));
-  if (maxR === 0) maxR = fn(maxTheta);
-  const scale = (Math.min(cssW, cssH) / 2 - 40) / (maxR * 1.12 || 1);
+  if (maxR === 0) maxR = 1;
+  const scale = (Math.min(cssW, cssH) / 2 - 36) / (maxR * 1.08);
 
-  /* curve up to last point */
-  const lastTh = pts.length > 0 ? pts[pts.length - 1].theta * 1.06 : maxTheta;
-  const STEPS  = 5000;
-  const curve  = [];
-  for (let i = 0; i <= STEPS; i++) {
-    const th = 0.01 + (lastTh - 0.01) * i / STEPS;
-    const r = fn(th);
-    curve.push([r * Math.cos(th), r * Math.sin(th)]);
-  }
+  /* curve */
+  const curve = spiral.curve(pts);
 
   ctx.clearRect(0, 0, cssW, cssH);
 
@@ -291,14 +380,16 @@ function draw() {
   ctx.beginPath(); ctx.moveTo(CX, 0); ctx.lineTo(CX, cssH); ctx.stroke();
 
   /* spiral curve */
-  ctx.strokeStyle = '#7dd3fc44';
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  for (let i = 0; i < curve.length; i++) {
-    const sx = CX + curve[i][0] * scale, sy = CY - curve[i][1] * scale;
-    i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+  if (curve.length > 1) {
+    ctx.strokeStyle = '#7dd3fc44';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < curve.length; i++) {
+      const sx = CX + curve[i][0] * scale, sy = CY - curve[i][1] * scale;
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
 
   /* origin */
   ctx.fillStyle = '#7dd3fc';
@@ -317,28 +408,30 @@ function draw() {
     if (hit) {
       ctx.fillStyle   = '#facc15';
       ctx.shadowColor = '#facc1566';
-      ctx.shadowBlur  = 10;
-      ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur  = 8;
+      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
     } else {
       ctx.fillStyle = '#6b6b7888';
-      ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx, sy, 1.6, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  /* labels for sparse subsets */
+  /* labels for sparse subsets (skip if too many to avoid clutter) */
   if (isSparse) {
-    ctx.font = '11px system-ui';
-    ctx.fillStyle = '#facc15';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-    for (const dp of drawnPts) {
-      if (!dp.hit) continue;
-      ctx.fillText(dp.n, dp.sx + 7, dp.sy - 5);
+    const highlighted = drawnPts.filter(p => p.hit);
+    if (highlighted.length <= 120) {
+      ctx.font = '11px system-ui';
+      ctx.fillStyle = '#facc15';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      for (const dp of highlighted) {
+        ctx.fillText(dp.n, dp.sx + 7, dp.sy - 5);
+      }
     }
   }
 
-  /* hovered point ring */
+  /* hovered point */
   if (hoveredIdx >= 0 && hoveredIdx < drawnPts.length) {
     const hp = drawnPts[hoveredIdx];
     ctx.strokeStyle = '#fff';
@@ -347,18 +440,17 @@ function draw() {
   }
 
   /* info */
-  const highlighted = pts.filter(p => inSubset(p.n, subset, fib)).length;
+  const hlCount = pts.filter(p => inSubset(p.n, subset, fib)).length;
   document.getElementById('infoText').innerHTML =
     `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
-    `arc-length 1…${arcLen} (${turns} turns) &middot; ` +
-    `<b>${highlighted}</b> of ${pts.length} points highlighted (${subset}).`;
+    `n = 1…${arcLen} &middot; <b>${hlCount}</b> of ${pts.length} highlighted (${subset}).`;
 }
 
-/* ── scroll-to-zoom on canvas ── */
+/* ── scroll to zoom (no ceiling) ── */
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
-  arcLen = Math.round(Math.min(MAX_ARC, Math.max(MIN_ARC, arcLen * factor)));
+  arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
   hoveredIdx = -1;
   draw();
 }, { passive: false });
@@ -368,18 +460,12 @@ canvas.addEventListener('mousemove', e => {
   const rect = canvas.getBoundingClientRect();
   const mx = (e.clientX - rect.left) * (cssW / rect.width);
   const my = (e.clientY - rect.top)  * (cssH / rect.height);
-
   let best = -1, bestD = 14;
   for (let i = 0; i < drawnPts.length; i++) {
     const d = Math.hypot(drawnPts[i].sx - mx, drawnPts[i].sy - my);
     if (d < bestD) { bestD = d; best = i; }
   }
-
-  if (best !== hoveredIdx) {
-    hoveredIdx = best;
-    draw();
-  }
-
+  if (best !== hoveredIdx) { hoveredIdx = best; draw(); }
   if (best >= 0) {
     const p = drawnPts[best];
     tipEl.style.display = 'block';
@@ -391,18 +477,14 @@ canvas.addEventListener('mousemove', e => {
   }
 });
 canvas.addEventListener('mouseleave', () => {
-  hoveredIdx = -1;
-  tipEl.style.display = 'none';
-  draw();
+  hoveredIdx = -1; tipEl.style.display = 'none'; draw();
 });
 
 /* ── controls ── */
 for (const el of document.querySelectorAll('select'))
   el.addEventListener('input', () => { hoveredIdx = -1; draw(); });
 
-/* ── resize ── */
 window.addEventListener('resize', draw);
-
 draw();
 </script>
 </body>
