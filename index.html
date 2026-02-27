@@ -54,24 +54,24 @@
 <div class="controls">
   <label>Spiral
     <select id="spiralType">
-      <option value="archimedean" selected>Archimedean</option>
-      <option value="fermat">Fermat&rsquo;s</option>
-      <option value="golden">Golden (Fibonacci)</option>
-      <option value="theodorus">Theodorus</option>
-      <option value="sacks">Sacks</option>
-      <option value="square">Square</option>
-      <option value="hexagonal">Hexagonal</option>
+      <option value="archimedean" selected>1 &mdash; Archimedean</option>
+      <option value="fermat">2 &mdash; Fermat&rsquo;s</option>
+      <option value="golden">3 &mdash; Golden (Fibonacci)</option>
+      <option value="theodorus">4 &mdash; Theodorus</option>
+      <option value="sacks">5 &mdash; Sacks</option>
+      <option value="square">6 &mdash; Square</option>
+      <option value="hexagonal">7 &mdash; Hexagonal</option>
     </select>
   </label>
   <label>Highlight
     <select id="subset">
-      <option value="all">All integers</option>
-      <option value="odd">Odd</option>
-      <option value="even">Even</option>
-      <option value="squares">Perfect squares</option>
-      <option value="primes" selected>Primes</option>
-      <option value="fibonacci">Fibonacci</option>
-      <option value="triangular">Triangular</option>
+      <option value="all">! &mdash; All integers</option>
+      <option value="odd">@ &mdash; Odd</option>
+      <option value="even"># &mdash; Even</option>
+      <option value="squares">$ &mdash; Perfect squares</option>
+      <option value="primes" selected>% &mdash; Primes</option>
+      <option value="fibonacci">^ &mdash; Fibonacci</option>
+      <option value="triangular">&amp; &mdash; Triangular</option>
     </select>
   </label>
 </div>
@@ -341,6 +341,28 @@ function sizeCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+/* ── spiral key order (for keyboard shortcuts) ── */
+const SPIRAL_KEYS = ['archimedean','fermat','golden','theodorus','sacks','square','hexagonal'];
+
+/* ── URL fragment state ── */
+function stateToHash() {
+  const s = document.getElementById('spiralType').value;
+  const h = document.getElementById('subset').value;
+  return `#${s},${h},${arcLen}`;
+}
+function loadHash() {
+  const f = location.hash.slice(1);
+  if (!f) return;
+  const [s, h, n] = f.split(',');
+  if (s && SPIRALS[s]) document.getElementById('spiralType').value = s;
+  if (h) { const sel = document.getElementById('subset'); if ([...sel.options].some(o => o.value === h)) sel.value = h; }
+  if (n && +n >= MIN_ARC) arcLen = +n;
+}
+function pushHash() {
+  const h = stateToHash();
+  if (location.hash !== h) history.replaceState(null, '', h);
+}
+
 /* ── zoom state ── */
 const MIN_ARC = 8;
 let arcLen = 150;
@@ -395,29 +417,46 @@ function draw() {
   ctx.fillStyle = '#7dd3fc';
   ctx.beginPath(); ctx.arc(CX, CY, 3, 0, Math.PI * 2); ctx.fill();
 
-  /* points */
-  drawnPts = [];
+  /* adaptive sizing */
+  const N = pts.length;
+  const hiR  = N < 200 ? 4   : N < 800 ? 3   : N < 3000 ? 2   : N < 10000 ? 1.2 : 0.7;
+  const loR  = N < 200 ? 1.6 : N < 800 ? 1.2 : N < 3000 ? 0.8 : 0.5;
+  const glow = N < 800 ? 8   : N < 3000 ? 4   : 0;
+  const showUnhit = N < 1500;
   const isSparse = ['squares', 'primes', 'fibonacci', 'triangular'].includes(subset);
 
-  for (const p of pts) {
-    const sx  = CX + p.x * scale;
-    const sy  = CY - p.y * scale;
-    const hit = inSubset(p.n, subset, fib);
-    drawnPts.push({ sx, sy, n: p.n, hit });
+  /* points */
+  drawnPts = [];
 
-    if (hit) {
-      ctx.fillStyle   = '#facc15';
-      ctx.shadowColor = '#facc1566';
-      ctx.shadowBlur  = 8;
-      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-    } else {
-      ctx.fillStyle = '#6b6b7888';
-      ctx.beginPath(); ctx.arc(sx, sy, 1.6, 0, Math.PI * 2); ctx.fill();
+  /* draw unhighlighted first (back layer) */
+  if (showUnhit) {
+    ctx.fillStyle = '#6b6b7888';
+    for (const p of pts) {
+      const sx = CX + p.x * scale, sy = CY - p.y * scale;
+      const hit = inSubset(p.n, subset, fib);
+      drawnPts.push({ sx, sy, n: p.n, hit });
+      if (!hit) {
+        ctx.beginPath(); ctx.arc(sx, sy, loR, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else {
+    for (const p of pts) {
+      const sx = CX + p.x * scale, sy = CY - p.y * scale;
+      const hit = inSubset(p.n, subset, fib);
+      drawnPts.push({ sx, sy, n: p.n, hit });
     }
   }
 
-  /* labels for sparse subsets (skip if too many to avoid clutter) */
+  /* draw highlighted on top */
+  ctx.fillStyle = '#facc15';
+  if (glow) { ctx.shadowColor = '#facc1566'; ctx.shadowBlur = glow; }
+  for (const dp of drawnPts) {
+    if (!dp.hit) continue;
+    ctx.beginPath(); ctx.arc(dp.sx, dp.sy, hiR, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  /* labels for sparse subsets */
   if (isSparse) {
     const highlighted = drawnPts.filter(p => p.hit);
     if (highlighted.length <= 120) {
@@ -452,7 +491,7 @@ canvas.addEventListener('wheel', e => {
   const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
   arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
   hoveredIdx = -1;
-  draw();
+  draw(); pushHash();
 }, { passive: false });
 
 /* ── hover / tooltip ── */
@@ -482,10 +521,37 @@ canvas.addEventListener('mouseleave', () => {
 
 /* ── controls ── */
 for (const el of document.querySelectorAll('select'))
-  el.addEventListener('input', () => { hoveredIdx = -1; draw(); });
+  el.addEventListener('input', () => { hoveredIdx = -1; draw(); pushHash(); });
+
+/* ── keyboard: 1-7 spiral, shift+1-7 subset ── */
+const SUBSET_KEYS = ['all','odd','even','squares','primes','fibonacci','triangular'];
+const SHIFT_CHARS = '!@#$%^&';
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  const k = e.key;
+  /* shift+1..7 → subset */
+  const si = SHIFT_CHARS.indexOf(k);
+  if (si >= 0 && si < SUBSET_KEYS.length) {
+    document.getElementById('subset').value = SUBSET_KEYS[si];
+    hoveredIdx = -1; draw(); pushHash(); return;
+  }
+  /* 1..7 → spiral */
+  if (k >= '1' && k <= '7') {
+    const idx = +k - 1;
+    if (idx < SPIRAL_KEYS.length) {
+      document.getElementById('spiralType').value = SPIRAL_KEYS[idx];
+      hoveredIdx = -1; draw(); pushHash();
+    }
+  }
+});
+
+/* ── hash navigation ── */
+window.addEventListener('hashchange', () => { loadHash(); hoveredIdx = -1; draw(); });
 
 window.addEventListener('resize', draw);
+loadHash();
 draw();
+pushHash();
 </script>
 </body>
 </html>
