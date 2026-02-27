@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Natural Spirals</title>
 <style>
-  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #3f3f46; --hi: #facc15; }
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15; --grid: #1e1e28; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   head, style, script { display: none !important; }
   html, body { height: 100%; overflow: hidden; }
@@ -282,7 +282,7 @@ function draw() {
   ctx.clearRect(0, 0, cssW, cssH);
 
   /* grid rings */
-  ctx.strokeStyle = '#1c1c24';
+  ctx.strokeStyle = '#1e1e28';
   ctx.lineWidth = 0.5;
   for (let gr = 60; gr < cssW; gr += 60) {
     ctx.beginPath(); ctx.arc(CX, CY, gr, 0, Math.PI * 2); ctx.stroke();
@@ -291,7 +291,7 @@ function draw() {
   ctx.beginPath(); ctx.moveTo(CX, 0); ctx.lineTo(CX, cssH); ctx.stroke();
 
   /* spiral curve */
-  ctx.strokeStyle = '#7dd3fc30';
+  ctx.strokeStyle = '#7dd3fc44';
   ctx.lineWidth = 1.4;
   ctx.beginPath();
   for (let i = 0; i < curve.length; i++) {
@@ -321,7 +321,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
     } else {
-      ctx.fillStyle = '#3f3f4666';
+      ctx.fillStyle = '#6b6b7888';
       ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill();
     }
   }
@@ -329,7 +329,7 @@ function draw() {
   /* labels for sparse subsets */
   if (isSparse) {
     ctx.font = '11px system-ui';
-    ctx.fillStyle = '#facc15bb';
+    ctx.fillStyle = '#facc15';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     for (const dp of drawnPts) {
