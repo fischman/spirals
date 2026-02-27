@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Integers on Spirals</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 16 C16 12,20 10,22 12 C25 15,23 21,18 22 C12 23,8 18,10 13 C12 6,20 4,25 8 C31 13,28 24,20 27 C11 30,4 22,6 13 C8 3,18 -1,26 4' fill='none' stroke='%237dd3fc' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
@@ -120,8 +120,9 @@
     <p>
       <kbd>1</kbd>&ndash;<kbd>7</kbd> &nbsp;switch spiral type<br>
       <kbd>&#x21E7;1</kbd>&ndash;<kbd>&#x21E7;7</kbd> &nbsp;switch highlighted subset<br>
-      <b>Mouse Scroll</b> on canvas to zoom in/out<br>
-      <b>Mouse Hover</b> a point to see its index
+      <kbd>?</kbd> &nbsp;open this help<br>
+      <b>Scroll / Pinch</b> on canvas to zoom in/out<br>
+      <b>Hover</b> a point to see its index
     </p>
     <hr><p></p>
     <p>
@@ -570,6 +571,8 @@ const SHIFT_CHARS = '!@#$%^&';
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT') return;
   const k = e.key;
+  /* ? → open help */
+  if (k === '?') { helpModal.hidden = false; return; }
   /* shift+1..7 → subset */
   const si = SHIFT_CHARS.indexOf(k);
   if (si >= 0 && si < SUBSET_KEYS.length) {
@@ -588,9 +591,47 @@ window.addEventListener('keydown', e => {
 
 /* ── help modal ── */
 const helpModal = document.getElementById('helpModal');
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !helpModal.hidden) { helpModal.hidden = true; e.preventDefault(); }
+});
 document.getElementById('helpBtn').addEventListener('click', () => helpModal.hidden = false);
 document.getElementById('helpClose').addEventListener('click', () => helpModal.hidden = true);
 helpModal.addEventListener('click', e => { if (e.target === helpModal) helpModal.hidden = true; });
+
+/* ── pinch-to-zoom on touch devices ── */
+let pinchStartDist = 0;
+let pinchStartArc  = 0;
+
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStartDist = Math.hypot(dx, dy);
+    pinchStartArc  = arcLen;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    if (pinchStartDist > 0) {
+      /* Pinch out (spread) → zoom in → fewer points (smaller arcLen)
+         Pinch in (squeeze) → zoom out → more points (larger arcLen) */
+      const ratio = pinchStartDist / dist;
+      arcLen = Math.max(MIN_ARC, Math.round(pinchStartArc * ratio));
+      hoveredIdx = -1;
+      draw(); pushHash();
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  if (e.touches.length < 2) { pinchStartDist = 0; }
+});
 
 /* ── hash navigation ── */
 window.addEventListener('hashchange', () => { loadHash(); hoveredIdx = -1; draw(); });
