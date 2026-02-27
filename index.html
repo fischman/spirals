@@ -334,27 +334,21 @@ const SPIRALS = {
   /* ── Hexagonal spiral ── */
   hexagonal: {
     name: 'Hexagonal Spiral',
-    desc: 'Path spiraling outward on a hex grid — each step is unit length with 60° turns. Used in cellular automata and game boards.',
+    desc: 'Limbs at 60° turns with lengths 1,1,2,2,3,3,… — the hex analogue of the Ulam spiral (Abbott / MathGroup 2005).',
     computePoints(maxN) {
-      const S3 = Math.sqrt(3) / 2;
-      const dirs = [[1,0],[0.5,S3],[-0.5,S3],[-1,0],[-0.5,-S3],[0.5,-S3]];
+      /* Direction for limb k is e^(i·k·π/3), limb length is floor((k+1)/2).
+         We walk unit steps along each limb, numbering each lattice point. */
       const pts = [];
-      let x = 0, y = 0, n = 0, ring = 1;
+      let x = 0, y = 0, n = 0, limb = 1;
       while (n < maxN) {
-        /* step east to enter new ring */
-        x += dirs[0][0]; y += dirs[0][1]; n++;
-        pts.push({ n, x, y });
-        if (n >= maxN) break;
-        /* traverse 6 sides of the ring */
-        for (let side = 0; side < 6 && n < maxN; side++) {
-          const d = dirs[(side + 2) % 6];
-          const steps = (side === 5) ? ring - 1 : ring;
-          for (let s = 0; s < steps && n < maxN; s++) {
-            x += d[0]; y += d[1]; n++;
-            pts.push({ n, x, y });
-          }
+        const angle = limb * Math.PI / 3;
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        const len = Math.floor((limb + 1) / 2);
+        for (let s = 0; s < len && n < maxN; s++) {
+          x += dx; y += dy; n++;
+          pts.push({ n, x, y });
         }
-        ring++;
+        limb++;
       }
       return pts;
     },
