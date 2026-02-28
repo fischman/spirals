@@ -87,3 +87,9 @@ Hex spiral should follow https://forums.wolfram.com/mathgroup/archive/2005/May/m
 ```
 git push to https://github.com/fischman/spirals (and set that as the default upstream)
 ```
+
+### `2026-02-28 09:52 PST`
+```
+Add a new type of integers to highlight: products of two primes.
+When highlighting those, draw a "triangle" between the two primes and their product.
+```

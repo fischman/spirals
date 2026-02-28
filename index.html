@@ -90,6 +90,7 @@
       <option value="primes" selected>&#x21E7;5 &mdash; Primes</option>
       <option value="fibonacci">&#x21E7;6 &mdash; Fibonacci</option>
       <option value="triangular">&#x21E7;7 &mdash; Triangular</option>
+      <option value="semiprimes">&#x21E7;8 &mdash; Products of two primes</option>
     </select>
   </label>
 </div>
@@ -103,6 +104,7 @@
     <span><span class="dot" style="background:var(--accent)"></span> spiral path</span>
     <span><span class="dot" style="background:var(--hi)"></span> highlighted point</span>
     <span><span class="dot" style="background:var(--dim)"></span> other integer point</span>
+    <span><span class="dot" style="background:#facc1544; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:9px solid #facc1566; border-radius:0;"></span> prime–product triangle</span>
   </div>
   <p class="info" id="infoText"></p>
 </div>
@@ -119,7 +121,7 @@
     <p><b>Controls:</b></p>
     <p>
       <kbd>1</kbd>&ndash;<kbd>7</kbd> &nbsp;switch spiral type<br>
-      <kbd>&#x21E7;1</kbd>&ndash;<kbd>&#x21E7;7</kbd> &nbsp;switch highlighted subset<br>
+      <kbd>&#x21E7;1</kbd>&ndash;<kbd>&#x21E7;8</kbd> &nbsp;switch highlighted subset<br>
       <kbd>?</kbd> &nbsp;open this help<br>
       <b>Scroll / Pinch</b> on canvas to zoom in/out<br>
       <b>Hover</b> a point to see its index
@@ -151,6 +153,18 @@ function fibSet(max) {
 }
 function isSquare(n)     { const s = Math.round(Math.sqrt(n)); return s * s === n; }
 function isTriangular(n) { const d = 8 * n + 1, s = Math.round(Math.sqrt(d)); return s * s === d; }
+function semiprimeFactors(n) {
+  /* If n = p*q where p,q are prime (p<=q), return [p,q]. Else null. */
+  if (n < 4) return null;
+  for (let i = 2; i * i <= n; i++) {
+    if (n % i === 0) {
+      const j = n / i;
+      if (isPrime(i) && isPrime(j)) return [i, j];
+      return null;
+    }
+  }
+  return null;
+}
 
 function inSubset(n, subset, fib) {
   switch (subset) {
@@ -161,6 +175,7 @@ function inSubset(n, subset, fib) {
     case 'primes':     return isPrime(n);
     case 'fibonacci':  return fib.has(n);
     case 'triangular': return isTriangular(n);
+    case 'semiprimes': return semiprimeFactors(n) !== null;
   }
 }
 
@@ -459,7 +474,7 @@ function draw() {
   const loR  = N < 200 ? 1.6 : N < 800 ? 1.2 : N < 3000 ? 0.8 : 0.5;
   const glow = N < 800 ? 8   : N < 3000 ? 4   : 0;
   const showUnhit = N < 1500;
-  const isSparse = ['squares', 'primes', 'fibonacci', 'triangular'].includes(subset);
+  const isSparse = ['squares', 'primes', 'fibonacci', 'triangular', 'semiprimes'].includes(subset);
 
   /* points */
   drawnPts = [];
@@ -480,6 +495,35 @@ function draw() {
       const sx = CX + p.x * scale, sy = CY - p.y * scale;
       const hit = inSubset(p.n, subset, fib);
       drawnPts.push({ sx, sy, n: p.n, hit });
+    }
+  }
+
+  /* semiprime triangles: connect product ↔ factor1 ↔ factor2 ↔ product */
+  if (subset === 'semiprimes') {
+    const ptByN = new Map();
+    for (const dp of drawnPts) ptByN.set(dp.n, dp);
+    ctx.lineWidth = 0.8;
+    for (const dp of drawnPts) {
+      if (!dp.hit) continue;
+      const factors = semiprimeFactors(dp.n);
+      if (!factors) continue;
+      const [p, q] = factors;
+      const pp = ptByN.get(p), qp = ptByN.get(q);
+      if (!pp || !qp) continue;
+      ctx.fillStyle = '#facc1510';
+      ctx.beginPath();
+      ctx.moveTo(dp.sx, dp.sy);
+      ctx.lineTo(pp.sx, pp.sy);
+      ctx.lineTo(qp.sx, qp.sy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#facc1544';
+      ctx.beginPath();
+      ctx.moveTo(dp.sx, dp.sy);
+      ctx.lineTo(pp.sx, pp.sy);
+      ctx.lineTo(qp.sx, qp.sy);
+      ctx.closePath();
+      ctx.stroke();
     }
   }
 
@@ -546,7 +590,13 @@ canvas.addEventListener('mousemove', e => {
     tipEl.style.display = 'block';
     tipEl.style.left = (e.clientX + 14) + 'px';
     tipEl.style.top  = (e.clientY - 10) + 'px';
-    tipEl.innerHTML  = `<span class="tn">n = ${p.n}</span>`;
+    let tipText = `<span class="tn">n = ${p.n}</span>`;
+    const subset = document.getElementById('subset').value;
+    if (subset === 'semiprimes') {
+      const f = semiprimeFactors(p.n);
+      if (f) tipText += ` = ${f[0]} \u00d7 ${f[1]}`;
+    }
+    tipEl.innerHTML = tipText;
   } else {
     tipEl.style.display = 'none';
   }
@@ -560,7 +610,7 @@ for (const el of document.querySelectorAll('select'))
   el.addEventListener('input', () => { hoveredIdx = -1; draw(); pushHash(); });
 
 /* ── keyboard: 1-7 spiral, shift+1-7 subset ── */
-const SUBSET_KEYS = ['all','odd','even','squares','primes','fibonacci','triangular'];
+const SUBSET_KEYS = ['all','odd','even','squares','primes','fibonacci','triangular','semiprimes'];
 const SHIFT_CHARS = '!@#$%^&';
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT') return;
