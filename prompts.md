@@ -105,3 +105,13 @@ If you make a hook, do it in the main repo as .hooks-pre-commit and then symlink
 ```
 Add a comment to the top of the new hook documenting how to symlink it in new clones.
 ```
+
+### `2026-03-01 09:44 PST`
+```
+Looks like the new shift-8 shortcut doesn't work (shift-1..7 still work). Don't git commit until I approve.
+```
+
+### `2026-03-01 09:45 PST`
+```
+git commit and push
+```
