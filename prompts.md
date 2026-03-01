@@ -120,3 +120,8 @@ git commit and push
 ```
 Change default view on load to #golden,semiprimes,108
 ```
+
+### `2026-03-01 10:01 PST`
+```
+Add to the header of the help modal a right-aligned github icon (that doesn't change the height of the header) that links to https://github.com/fischman/spirals
+```
