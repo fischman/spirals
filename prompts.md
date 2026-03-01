@@ -115,3 +115,8 @@ Looks like the new shift-8 shortcut doesn't work (shift-1..7 still work). Don't 
 ```
 git commit and push
 ```
+
+### `2026-03-01 09:48 PST`
+```
+Change default view on load to #golden,semiprimes,108
+```

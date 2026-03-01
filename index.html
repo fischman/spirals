@@ -72,9 +72,9 @@
 <div class="controls">
   <label>Spiral
     <select id="spiralType">
-      <option value="archimedean" selected>1 &mdash; Archimedean</option>
+      <option value="archimedean">1 &mdash; Archimedean</option>
       <option value="fermat">2 &mdash; Fermat&rsquo;s</option>
-      <option value="golden">3 &mdash; Golden (Fibonacci)</option>
+      <option value="golden" selected>3 &mdash; Golden (Fibonacci)</option>
       <option value="theodorus">4 &mdash; Theodorus</option>
       <option value="sacks">5 &mdash; Sacks</option>
       <option value="square">6 &mdash; Square</option>
@@ -87,10 +87,10 @@
       <option value="odd">&#x21E7;2 &mdash; Odd</option>
       <option value="even">&#x21E7;3 &mdash; Even</option>
       <option value="squares">&#x21E7;4 &mdash; Perfect squares</option>
-      <option value="primes" selected>&#x21E7;5 &mdash; Primes</option>
+      <option value="primes">&#x21E7;5 &mdash; Primes</option>
       <option value="fibonacci">&#x21E7;6 &mdash; Fibonacci</option>
       <option value="triangular">&#x21E7;7 &mdash; Triangular</option>
-      <option value="semiprimes">&#x21E7;8 &mdash; Products of two primes</option>
+      <option value="semiprimes" selected>&#x21E7;8 &mdash; Products of two primes</option>
     </select>
   </label>
 </div>
@@ -416,7 +416,7 @@ function pushHash() {
 
 /* ── zoom state ── */
 const MIN_ARC = 8;
-let arcLen = 150;
+let arcLen = 108;
 
 /* ── drawing state ── */
 let drawnPts   = [];
