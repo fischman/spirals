@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-commit hook: regenerate prompts.md and include it in the commit.
+
+./prompts.py
+git add prompts.md

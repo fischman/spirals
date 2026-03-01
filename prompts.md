@@ -93,3 +93,10 @@ git push to https://github.com/fischman/spirals (and set that as the default ups
 Add a new type of integers to highlight: products of two primes.
 When highlighting those, draw a "triangle" between the two primes and their product.
 ```
+
+### `2026-03-01 09:41 PST`
+```
+I want it so that any git commit includes a re-run of ./prompts.py and auto-adds the edited prompts.md into the current commit.
+Probably as a pre-commit hook? (or propose alterantive).
+If you make a hook, do it in the main repo as .hooks-pre-commit and then symlink from .git/hooks to take effect.
+```
