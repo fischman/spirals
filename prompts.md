@@ -100,3 +100,8 @@ I want it so that any git commit includes a re-run of ./prompts.py and auto-adds
 Probably as a pre-commit hook? (or propose alterantive).
 If you make a hook, do it in the main repo as .hooks-pre-commit and then symlink from .git/hooks to take effect.
 ```
+
+### `2026-03-01 09:42 PST`
+```
+Add a comment to the top of the new hook documenting how to symlink it in new clones.
+```

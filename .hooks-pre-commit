@@ -1,5 +1,7 @@
 #!/bin/sh
 # Pre-commit hook: regenerate prompts.md and include it in the commit.
+# To activate in a fresh clone, run:
+#   ln -sf ../../.hooks-pre-commit .git/hooks/pre-commit
 
 ./prompts.py
 git add prompts.md
