@@ -125,3 +125,58 @@ Change default view on load to #golden,semiprimes,108
 ```
 Add to the header of the help modal a right-aligned github icon (that doesn't change the height of the header) that links to https://github.com/fischman/spirals
 ```
+
+### `2026-03-02 11:23 PST`
+```
+Add a new spiral type: Hilbert space-filling curve.
+Instead of zoom changing the field of view, make it iterate hilbert iterations, making the length of the curve inside the 1x1 square arbitrarily large as the zoom grows.
+```
+
+### `2026-03-02 12:46 PST`
+```
+Bug: https://spiral.exe.xyz:8000/index.html#hilbert,primes,7 for example has the hilbert curve at the top-right quarter of the screen with yellow dots showing on the entire screen.
+(when you have a fix, amend previous commit with it)
+```
+
+### `2026-03-02 12:47 PST`
+```
+Continue, but also https://spiral.exe.xyz:8000/index.html#golden,primes,121 is totally busted (points don't lie on the curve). I suspect all the spirals are broken this way.
+```
+
+### `2026-03-02 12:51 PST`
+```
+Are you clamping zoom level on hilbert? Don't. 
+(amend previous commit)
+```
+
+### `2026-03-02 12:55 PST`
+```
+Hilbert now looks good, but other spiral types act much worse during zoom since now they "spin" around the canvas. Restore previous behavior where the center was fixed during zoom, amending previous commit.
+```
+
+### `2026-03-02 13:01 PST`
+```
+Webapp is sluggish at large zooms. I suspect recomputation. Propose a way to confirm this hypothesis.
+```
+
+### `2026-03-02 13:01 PST`
+```
+yes
+```
+
+### `2026-03-02 13:01 PST`
+```
+continue but don't git commit until I say so
+```
+
+### `2026-03-02 13:04 PST`
+```
+ok, revert the timing code with git reset --hard HEAD
+Then propose improvement to render time.
+```
+
+### `2026-03-02 13:06 PST`
+```
+do the first option, at least for now.
+(apply to all spiral types, not just Hilbert)
+```

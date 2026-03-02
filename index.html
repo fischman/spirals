@@ -69,7 +69,7 @@
 
 <div class="header">
   <h1>&#127744; Integers on Spirals</h1>
-  <p class="subtitle">Points at integer arc-length from the origin &middot; scroll to zoom</p>
+  <p class="subtitle" id="subtitleText">Points at integer arc-length from the origin &middot; scroll to zoom</p>
 </div>
 
 <div class="controls">
@@ -82,6 +82,7 @@
       <option value="sacks">5 &mdash; Sacks</option>
       <option value="square">6 &mdash; Square</option>
       <option value="hexagonal">7 &mdash; Hexagonal</option>
+      <option value="hilbert">8 &mdash; Hilbert Curve</option>
     </select>
   </label>
   <label>Highlight
@@ -123,7 +124,7 @@
     <hr><p></p>
     <p><b>Controls:</b></p>
     <p>
-      <kbd>1</kbd>&ndash;<kbd>7</kbd> &nbsp;switch spiral type<br>
+      <kbd>1</kbd>&ndash;<kbd>8</kbd> &nbsp;switch spiral type<br>
       <kbd>&#x21E7;1</kbd>&ndash;<kbd>&#x21E7;8</kbd> &nbsp;switch highlighted subset<br>
       <kbd>?</kbd> &nbsp;open this help<br>
       <b>Scroll / Pinch</b> on canvas to zoom in/out<br>
@@ -372,7 +373,46 @@ const SPIRALS = {
     },
     curve(pts) { return pts.map(p => [p.x, p.y]); },
   },
+
+  /* ── Hilbert space-filling curve ── */
+  hilbert: {
+    name: 'Hilbert Curve',
+    desc: 'A space-filling curve that visits every cell of a grid. Zoom (scroll) controls the iteration depth — each level quadruples the number of points.',
+    /* Override: zoom controls iteration order, not arcLen */
+    isHilbert: true,
+    computePoints(maxN) {
+      /* maxN is actually used as iteration order for Hilbert */
+      const order = maxN; // reinterpreted by draw()
+      const N = (1 << order);       // grid side
+      const total = N * N;
+      const pts = [];
+      for (let i = 0; i < total; i++) {
+        const [x, y] = hilbertD2xy(order, i);
+        pts.push({ n: i + 1, x, y });
+      }
+      return pts;
+    },
+    curve(pts) { return pts.map(p => [p.x, p.y]); },
+  },
 };
+
+/* ── Hilbert curve index → (x,y) mapping ── */
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    // rotate
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      [x, y] = [y, x];
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
 
 /* ══════════════════════════════════════════
    Canvas sizing
@@ -396,13 +436,14 @@ function sizeCanvas() {
 }
 
 /* ── spiral key order (for keyboard shortcuts) ── */
-const SPIRAL_KEYS = ['archimedean','fermat','golden','theodorus','sacks','square','hexagonal'];
+const SPIRAL_KEYS = ['archimedean','fermat','golden','theodorus','sacks','square','hexagonal','hilbert'];
 
 /* ── URL fragment state ── */
 function stateToHash() {
   const s = document.getElementById('spiralType').value;
   const h = document.getElementById('subset').value;
-  return `#${s},${h},${arcLen}`;
+  const zoom = s === 'hilbert' ? hilbertOrder : arcLen;
+  return `#${s},${h},${zoom}`;
 }
 function loadHash() {
   const f = location.hash.slice(1);
@@ -410,7 +451,13 @@ function loadHash() {
   const [s, h, n] = f.split(',');
   if (s && SPIRALS[s]) document.getElementById('spiralType').value = s;
   if (h) { const sel = document.getElementById('subset'); if ([...sel.options].some(o => o.value === h)) sel.value = h; }
-  if (n && +n >= MIN_ARC) arcLen = +n;
+  if (n) {
+    if (s === 'hilbert') {
+      hilbertOrder = Math.max(MIN_HILBERT, +n || 3);
+    } else if (+n >= MIN_ARC) {
+      arcLen = +n;
+    }
+  }
 }
 function pushHash() {
   const h = stateToHash();
@@ -420,6 +467,9 @@ function pushHash() {
 /* ── zoom state ── */
 const MIN_ARC = 8;
 let arcLen = 108;
+let hilbertOrder = 3;  /* iteration depth for Hilbert curve (1..9) */
+const MIN_HILBERT = 1;
+
 
 /* ── drawing state ── */
 let drawnPts   = [];
@@ -432,44 +482,76 @@ function draw() {
   const spiral    = SPIRALS[spiralKey];
   const CX = cssW / 2, CY = cssH / 2;
 
-  const pts = spiral.computePoints(arcLen);
-  const fib = fibSet(arcLen);
+  const isHilbert = !!spiral.isHilbert;
+  const effectiveN = isHilbert ? (1 << hilbertOrder) * (1 << hilbertOrder) : arcLen;
+  const pts = isHilbert ? spiral.computePoints(hilbertOrder) : spiral.computePoints(arcLen);
+  const fib = fibSet(effectiveN);
+
+  document.getElementById('subtitleText').textContent = isHilbert
+    ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
+    : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
 
   /* scale to fit */
-  let maxR = 0;
-  for (const p of pts) maxR = Math.max(maxR, Math.hypot(p.x, p.y));
-  if (maxR === 0) maxR = 1;
-  const scale = (Math.min(cssW, cssH) / 2 - 36) / (maxR * 1.08);
+  let scale, dataCX, dataCY;
+  if (isHilbert) {
+    /* Bounding-box fit for Hilbert (not origin-centered) */
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    if (!pts.length) { minX = maxX = minY = maxY = 0; }
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const PAD = 36;
+    scale = Math.min((cssW - 2 * PAD) / rangeX, (cssH - 2 * PAD) / rangeY) / 1.08;
+    dataCX = (minX + maxX) / 2;
+    dataCY = (minY + maxY) / 2;
+  } else {
+    /* Origin-centered radial fit for spirals */
+    let maxR = 0;
+    for (const p of pts) maxR = Math.max(maxR, Math.hypot(p.x, p.y));
+    if (maxR === 0) maxR = 1;
+    scale = (Math.min(cssW, cssH) / 2 - 36) / (maxR * 1.08);
+    dataCX = 0;
+    dataCY = 0;
+  }
 
   /* curve */
   const curve = spiral.curve(pts);
 
   ctx.clearRect(0, 0, cssW, cssH);
 
-  /* grid rings */
+  /* grid */
+  const originSX = CX + (0 - dataCX) * scale;
+  const originSY = CY - (0 - dataCY) * scale;
   ctx.strokeStyle = '#1e1e28';
   ctx.lineWidth = 0.5;
-  for (let gr = 60; gr < cssW; gr += 60) {
-    ctx.beginPath(); ctx.arc(CX, CY, gr, 0, Math.PI * 2); ctx.stroke();
+  if (!isHilbert) {
+    for (let gr = 60; gr < cssW; gr += 60) {
+      ctx.beginPath(); ctx.arc(originSX, originSY, gr, 0, Math.PI * 2); ctx.stroke();
+    }
   }
-  ctx.beginPath(); ctx.moveTo(0, CY); ctx.lineTo(cssW, CY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(CX, 0); ctx.lineTo(CX, cssH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, originSY); ctx.lineTo(cssW, originSY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(originSX, 0); ctx.lineTo(originSX, cssH); ctx.stroke();
 
-  /* spiral curve */
-  if (curve.length > 1) {
+  /* spiral curve (skip when segments are sub-pixel) */
+  if (curve.length > 1 && curve.length <= 20000) {
     ctx.strokeStyle = '#7dd3fc44';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     for (let i = 0; i < curve.length; i++) {
-      const sx = CX + curve[i][0] * scale, sy = CY - curve[i][1] * scale;
+      const sx = CX + (curve[i][0] - dataCX) * scale, sy = CY - (curve[i][1] - dataCY) * scale;
       i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
     }
     ctx.stroke();
   }
 
   /* origin */
-  ctx.fillStyle = '#7dd3fc';
-  ctx.beginPath(); ctx.arc(CX, CY, 3, 0, Math.PI * 2); ctx.fill();
+  if (!isHilbert) {
+    ctx.fillStyle = '#7dd3fc';
+    ctx.beginPath(); ctx.arc(originSX, originSY, 3, 0, Math.PI * 2); ctx.fill();
+  }
 
   /* adaptive sizing */
   const N = pts.length;
@@ -486,7 +568,7 @@ function draw() {
   if (showUnhit) {
     ctx.fillStyle = '#6b6b7888';
     for (const p of pts) {
-      const sx = CX + p.x * scale, sy = CY - p.y * scale;
+      const sx = CX + (p.x - dataCX) * scale, sy = CY - (p.y - dataCY) * scale;
       const hit = inSubset(p.n, subset, fib);
       drawnPts.push({ sx, sy, n: p.n, hit });
       if (!hit) {
@@ -495,7 +577,7 @@ function draw() {
     }
   } else {
     for (const p of pts) {
-      const sx = CX + p.x * scale, sy = CY - p.y * scale;
+      const sx = CX + (p.x - dataCX) * scale, sy = CY - (p.y - dataCY) * scale;
       const hit = inSubset(p.n, subset, fib);
       drawnPts.push({ sx, sy, n: p.n, hit });
     }
@@ -563,16 +645,29 @@ function draw() {
 
   /* info */
   const hlCount = pts.filter(p => inSubset(p.n, subset, fib)).length;
-  document.getElementById('infoText').innerHTML =
-    `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
-    `n = 1…${arcLen} &middot; <b>${hlCount}</b> of ${pts.length} highlighted (${subset}).`;
+  if (isHilbert) {
+    document.getElementById('infoText').innerHTML =
+      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+      `order = ${hilbertOrder} &middot; ${pts.length} cells &middot; <b>${hlCount}</b> highlighted (${subset}).`;
+  } else {
+    document.getElementById('infoText').innerHTML =
+      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+      `n = 1…${arcLen} &middot; <b>${hlCount}</b> of ${pts.length} highlighted (${subset}).`;
+  }
 }
 
 /* ── scroll to zoom (no ceiling) ── */
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
-  arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
+  const spiralKey = document.getElementById('spiralType').value;
+  if (SPIRALS[spiralKey].isHilbert) {
+    /* For Hilbert, scroll changes iteration order (integer steps) */
+    const dir = e.deltaY > 0 ? 1 : -1;
+    hilbertOrder = Math.max(MIN_HILBERT, hilbertOrder + dir);
+  } else {
+    const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+    arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
+  }
   hoveredIdx = -1;
   draw(); pushHash();
 }, { passive: false });
@@ -627,7 +722,7 @@ window.addEventListener('keydown', e => {
     hoveredIdx = -1; draw(); pushHash(); return;
   }
   /* 1..7 → spiral */
-  if (k >= '1' && k <= '7') {
+  if (k >= '1' && k <= '8') {
     const idx = +k - 1;
     if (idx < SPIRAL_KEYS.length) {
       document.getElementById('spiralType').value = SPIRAL_KEYS[idx];
@@ -635,6 +730,7 @@ window.addEventListener('keydown', e => {
     }
   }
 });
+
 
 /* ── help modal ── */
 const helpModal = document.getElementById('helpModal');
@@ -656,9 +752,11 @@ canvas.addEventListener('touchstart', e => {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     pinchStartDist = Math.hypot(dx, dy);
     pinchStartArc  = arcLen;
+    pinchStartHilbert = hilbertOrder;
   }
 }, { passive: false });
 
+let pinchStartHilbert = 0;
 canvas.addEventListener('touchmove', e => {
   if (e.touches.length === 2) {
     e.preventDefault();
@@ -666,10 +764,16 @@ canvas.addEventListener('touchmove', e => {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.hypot(dx, dy);
     if (pinchStartDist > 0) {
-      /* Pinch out (spread) → zoom in → fewer points (smaller arcLen)
-         Pinch in (squeeze) → zoom out → more points (larger arcLen) */
-      const ratio = pinchStartDist / dist;
-      arcLen = Math.max(MIN_ARC, Math.round(pinchStartArc * ratio));
+      const spiralKey = document.getElementById('spiralType').value;
+      if (SPIRALS[spiralKey].isHilbert) {
+        /* Map pinch ratio to integer order change */
+        const ratio = dist / pinchStartDist;
+        const delta = Math.round(Math.log2(ratio) * 2);
+        hilbertOrder = Math.max(MIN_HILBERT, pinchStartHilbert + delta);
+      } else {
+        const ratio = pinchStartDist / dist;
+        arcLen = Math.max(MIN_ARC, Math.round(pinchStartArc * ratio));
+      }
       hoveredIdx = -1;
       draw(); pushHash();
     }
