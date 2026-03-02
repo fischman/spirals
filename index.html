@@ -484,29 +484,58 @@ function draw() {
 
   const isHilbert = !!spiral.isHilbert;
   const effectiveN = isHilbert ? (1 << hilbertOrder) * (1 << hilbertOrder) : arcLen;
-  const pts = isHilbert ? spiral.computePoints(hilbertOrder) : spiral.computePoints(arcLen);
-  const fib = fibSet(effectiveN);
 
   document.getElementById('subtitleText').textContent = isHilbert
     ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
     : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
 
+  /* ── Hilbert bitmap fast-path (skips object allocation + arc() calls) ── */
+  if (isHilbert && effectiveN > 50000) {
+    ctx.clearRect(0, 0, cssW, cssH);
+    const N = 1 << hilbertOrder;
+    const fib = fibSet(effectiveN);
+    const imgData = new ImageData(N, N);
+    const data = imgData.data;
+    let hlCount = 0;
+    for (let d = 0; d < effectiveN; d++) {
+      const [x, y] = hilbertD2xy(hilbertOrder, d);
+      const n = d + 1;
+      const hit = inSubset(n, subset, fib);
+      if (hit) hlCount++;
+      const idx = ((N - 1 - y) * N + x) * 4;
+      if (hit) {
+        data[idx] = 0xfa; data[idx+1] = 0xcc; data[idx+2] = 0x15; data[idx+3] = 255;
+      } else {
+        data[idx] = 0x44; data[idx+1] = 0x44; data[idx+2] = 0x4e; data[idx+3] = 255;
+      }
+    }
+    const off = new OffscreenCanvas(N, N);
+    off.getContext('2d').putImageData(imgData, 0, 0);
+    const PAD = 36;
+    const drawSz = Math.min(cssW, cssH) - 2 * PAD;
+    const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, dx, dy, drawSz, drawSz);
+    ctx.imageSmoothingEnabled = true;
+    drawnPts = [];
+    document.getElementById('infoText').innerHTML =
+      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+      `order = ${hilbertOrder} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
+    return;
+  }
+
+  const pts = isHilbert ? spiral.computePoints(hilbertOrder) : spiral.computePoints(arcLen);
+  const fib = fibSet(effectiveN);
+
   /* scale to fit */
   let scale, dataCX, dataCY;
   if (isHilbert) {
     /* Bounding-box fit for Hilbert (not origin-centered) */
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-    }
-    if (!pts.length) { minX = maxX = minY = maxY = 0; }
-    const rangeX = maxX - minX || 1;
-    const rangeY = maxY - minY || 1;
+    const N = 1 << hilbertOrder;
     const PAD = 36;
-    scale = Math.min((cssW - 2 * PAD) / rangeX, (cssH - 2 * PAD) / rangeY) / 1.08;
-    dataCX = (minX + maxX) / 2;
-    dataCY = (minY + maxY) / 2;
+    scale = Math.min((cssW - 2 * PAD) / (N - 1), (cssH - 2 * PAD) / (N - 1)) / 1.08;
+    dataCX = (N - 1) / 2;
+    dataCY = (N - 1) / 2;
   } else {
     /* Origin-centered radial fit for spirals */
     let maxR = 0;

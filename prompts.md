@@ -196,3 +196,13 @@ they're not useful. Drop them.
 ```
 go ahead and commit
 ```
+
+### `2026-03-02 14:59 PST`
+```
+performance on https://spiral.exe.xyz:8000/index.html?v=1#hilbert,squares,11 is terrible. Quantify and propose fix
+```
+
+### `2026-03-02 15:01 PST`
+```
+Yes
+```
