@@ -216,3 +216,10 @@ make up/down arrows do the zoom-scroll, too.
 ```
 Show a spinner overlaid on top of the canvas while recalculating for any view change (spiral/dataset/zoom change).
 ```
+
+### `2026-03-02 15:23 PST`
+```
+With hilbert,primes visible, going from order 10 to 11 is quite slow and shows in console:
+[Violation] 'mouseleave' handler took 1456ms
+Also the spinner doesn't show during this transition.
+```

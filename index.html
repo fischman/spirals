@@ -717,7 +717,7 @@ canvas.addEventListener('mousemove', e => {
     const d = Math.hypot(drawnPts[i].sx - mx, drawnPts[i].sy - my);
     if (d < bestD) { bestD = d; best = i; }
   }
-  if (best !== hoveredIdx) { hoveredIdx = best; draw(); }
+  if (best !== hoveredIdx) { hoveredIdx = best; drawAsync(); }
   if (best >= 0) {
     const p = drawnPts[best];
     tipEl.style.display = 'block';
@@ -735,7 +735,7 @@ canvas.addEventListener('mousemove', e => {
   }
 });
 canvas.addEventListener('mouseleave', () => {
-  hoveredIdx = -1; tipEl.style.display = 'none'; draw();
+  hoveredIdx = -1; tipEl.style.display = 'none'; drawAsync();
 });
 
 /* ── controls ── */
