@@ -180,3 +180,19 @@ Then propose improvement to render time.
 do the first option, at least for now.
 (apply to all spiral types, not just Hilbert)
 ```
+
+### `2026-03-02 14:55 PST`
+```
+ok, I committed that.
+What's up w/ the very-faint concentric circles? I only just now noticed them but I don't think they're new.
+```
+
+### `2026-03-02 14:56 PST`
+```
+they're not useful. Drop them.
+```
+
+### `2026-03-02 14:58 PST`
+```
+go ahead and commit
+```
