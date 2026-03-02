@@ -223,3 +223,11 @@ With hilbert,primes visible, going from order 10 to 11 is quite slow and shows i
 [Violation] 'mouseleave' handler took 1456ms
 Also the spinner doesn't show during this transition.
 ```
+
+### `2026-03-02 15:27 PST`
+```
+Spinner is still not showing during the 10->11 transition, and now I see: 
+[Violation] 'requestAnimationFrame' handler took 1329ms
+
+I'm less concerned about the "Violation" and more concerned about the 1.3s delay.
+```

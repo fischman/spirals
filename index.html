@@ -158,6 +158,15 @@ function isPrime(n) {
     if (n % i === 0 || n % (i + 2) === 0) return false;
   return true;
 }
+/* Sieve of Eratosthenes → Uint8Array where sieve[i]=1 iff i is prime */
+function primeSieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
 function fibSet(max) {
   const s = new Set(); let a = 1, b = 1;
   while (a <= max) { s.add(a); [a, b] = [b, a + b]; }
@@ -189,6 +198,25 @@ function inSubset(n, subset, fib) {
     case 'triangular': return isTriangular(n);
     case 'semiprimes': return semiprimeFactors(n) !== null;
   }
+}
+/* Sieve-accelerated variant for bulk bitmap rendering */
+function inSubsetSieve(n, subset, fib, sieve) {
+  switch (subset) {
+    case 'primes':     return !!sieve[n];
+    case 'semiprimes': return semiprimeFactorsSieve(n, sieve) !== null;
+    default:           return inSubset(n, subset, fib);
+  }
+}
+function semiprimeFactorsSieve(n, sieve) {
+  if (n < 4) return null;
+  for (let i = 2; i * i <= n; i++) {
+    if (n % i === 0) {
+      const j = n / i;
+      if (sieve[i] && sieve[j]) return [i, j];
+      return null;
+    }
+  }
+  return null;
 }
 
 /* ══════════════════════════════════════════
@@ -488,7 +516,10 @@ let _spinnerRAF = 0;
 function drawAsync() {
   spinnerEl.hidden = false;
   cancelAnimationFrame(_spinnerRAF);
-  _spinnerRAF = requestAnimationFrame(() => { draw(); spinnerEl.hidden = true; });
+  /* Double-rAF: first frame paints the spinner, second does the work */
+  _spinnerRAF = requestAnimationFrame(() => {
+    _spinnerRAF = requestAnimationFrame(() => { draw(); spinnerEl.hidden = true; });
+  });
 }
 
 function draw() {
@@ -509,14 +540,16 @@ function draw() {
   if (isHilbert && effectiveN > 50000) {
     ctx.clearRect(0, 0, cssW, cssH);
     const N = 1 << hilbertOrder;
+    /* Pre-compute subset membership via bulk methods */
     const fib = fibSet(effectiveN);
+    const sieve = (subset === 'primes' || subset === 'semiprimes') ? primeSieve(effectiveN) : null;
     const imgData = new ImageData(N, N);
     const data = imgData.data;
     let hlCount = 0;
     for (let d = 0; d < effectiveN; d++) {
       const [x, y] = hilbertD2xy(hilbertOrder, d);
       const n = d + 1;
-      const hit = inSubset(n, subset, fib);
+      const hit = sieve ? inSubsetSieve(n, subset, fib, sieve) : inSubset(n, subset, fib);
       if (hit) hlCount++;
       const idx = ((N - 1 - y) * N + x) * 4;
       if (hit) {
