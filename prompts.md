@@ -211,3 +211,8 @@ Yes
 ```
 make up/down arrows do the zoom-scroll, too.
 ```
+
+### `2026-03-02 15:16 PST`
+```
+Show a spinner overlaid on top of the canvas while recalculating for any view change (spiral/dataset/zoom change).
+```
