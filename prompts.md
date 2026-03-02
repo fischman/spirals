@@ -206,3 +206,8 @@ performance on https://spiral.exe.xyz:8000/index.html?v=1#hilbert,squares,11 is 
 ```
 Yes
 ```
+
+### `2026-03-02 15:14 PST`
+```
+make up/down arrows do the zoom-scroll, too.
+```

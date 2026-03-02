@@ -740,7 +740,19 @@ window.addEventListener('keydown', e => {
     document.getElementById('subset').value = SUBSET_KEYS[si];
     hoveredIdx = -1; draw(); pushHash(); return;
   }
-  /* 1..7 → spiral */
+  /* ↑/↓ → zoom */
+  if (k === 'ArrowUp' || k === 'ArrowDown') {
+    e.preventDefault();
+    const spiralKey = document.getElementById('spiralType').value;
+    if (SPIRALS[spiralKey].isHilbert) {
+      hilbertOrder = Math.max(MIN_HILBERT, hilbertOrder + (k === 'ArrowDown' ? 1 : -1));
+    } else {
+      const factor = k === 'ArrowDown' ? 1.12 : 1 / 1.12;
+      arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
+    }
+    hoveredIdx = -1; draw(); pushHash(); return;
+  }
+  /* 1..8 → spiral */
   if (k >= '1' && k <= '8') {
     const idx = +k - 1;
     if (idx < SPIRAL_KEYS.length) {
