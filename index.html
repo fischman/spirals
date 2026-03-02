@@ -159,12 +159,31 @@ function isPrime(n) {
   return true;
 }
 /* Sieve of Eratosthenes → Uint8Array where sieve[i]=1 iff i is prime */
+/* Memoised, incrementally extensible sieve of Eratosthenes */
+let _sieveMax = 0, _sieve = null;
 function primeSieve(max) {
+  if (_sieve && _sieveMax >= max) return _sieve;
   const s = new Uint8Array(max + 1);
-  if (max >= 2) s[2] = 1;
-  for (let i = 3; i <= max; i += 2) s[i] = 1;
-  for (let i = 3; i * i <= max; i += 2)
-    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  const oldMax = _sieve ? _sieveMax : 0;
+  if (_sieve) s.set(_sieve);
+  /* Mark new odd numbers as candidate primes */
+  if (oldMax < 2 && max >= 2) s[2] = 1;
+  const startOdd = oldMax < 3 ? 3 : (oldMax + 1) | 1;  /* first odd >= oldMax+1 */
+  for (let i = startOdd; i <= max; i += 2) s[i] = 1;
+  /* Sieve: cross off composites of every prime p ≤ √max */
+  for (let p = 3; p * p <= max; p += 2) {
+    if (!s[p]) continue;
+    /* In the old range [0,oldMax] composites are already cleared.
+       Only sieve multiples of p that fall in (oldMax, max]. */
+    let j = p * p;
+    if (j <= oldMax) {
+      /* Advance to first odd multiple of p above oldMax */
+      j = Math.ceil((oldMax + 1) / p) * p;
+      if (j % 2 === 0) j += p;
+    }
+    for (; j <= max; j += 2 * p) s[j] = 0;
+  }
+  _sieve = s; _sieveMax = max;
   return s;
 }
 function fibSet(max) {

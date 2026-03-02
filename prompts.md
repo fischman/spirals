@@ -231,3 +231,8 @@ Spinner is still not showing during the 10->11 transition, and now I see:
 
 I'm less concerned about the "Violation" and more concerned about the 1.3s delay.
 ```
+
+### `2026-03-02 15:33 PST`
+```
+Memoize inSubsetSieve for a given max N. When N is smaller than the memoized version, just use the memo. When N is larger, use the previous memo to build the new sieve for the larger N.
+```
