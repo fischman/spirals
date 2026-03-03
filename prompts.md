@@ -277,3 +277,27 @@ Prime sieve shows 0 bytes even though I've zoomed around on https://spiral.exe.x
 ```
 no, I want every spiral type to use a shared sieve of primes.
 ```
+
+### `2026-03-02 17:56 PST`
+```
+This is very hard to believe: 
+
+<javascript_result>"{\"sieveMax\":24924,\"sieveBytes\":24925,\"hilbertCacheEntries\":0}"</javascript_result>
+
+You're telling me it just so happens that the bytes to store primes up to N is N+1 bytes for this particular N?
+```
+
+### `2026-03-02 17:57 PST`
+```
+no
+```
+
+### `2026-03-02 17:58 PST`
+```
+I don't like that zooming the non-hilbert curves is now choppy whereas before it was smooth.
+```
+
+### `2026-03-02 17:58 PST`
+```
+(with mouse scroll)
+```

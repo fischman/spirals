@@ -863,7 +863,7 @@ canvas.addEventListener('wheel', e => {
     arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
   }
   hoveredIdx = -1;
-  drawAsync(); pushHash();
+  draw(); pushHash();
 }, { passive: false });
 
 /* ── hover / tooltip ── */
@@ -925,7 +925,7 @@ window.addEventListener('keydown', e => {
       const factor = k === 'ArrowDown' ? 1.12 : 1 / 1.12;
       arcLen = Math.max(MIN_ARC, Math.round(arcLen * factor));
     }
-    hoveredIdx = -1; drawAsync(); pushHash(); return;
+    hoveredIdx = -1; draw(); pushHash(); return;
   }
   /* 1..8 → spiral */
   if (k >= '1' && k <= '8') {
