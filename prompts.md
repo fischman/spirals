@@ -236,3 +236,8 @@ I'm less concerned about the "Violation" and more concerned about the 1.3s delay
 ```
 Memoize inSubsetSieve for a given max N. When N is smaller than the memoized version, just use the memo. When N is larger, use the previous memo to build the new sieve for the larger N.
 ```
+
+### `2026-03-02 17:24 PST`
+```
+While viewing https://spiral.exe.xyz:8000/index.html?v=1#hilbert,primes,11 after it's fully loaded, moving teh mouse across the canvas triggers a 1.5s rAF. Short-circuit rAF's that don't involve a change.
+```

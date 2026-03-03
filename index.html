@@ -529,6 +529,7 @@ const MIN_HILBERT = 1;
 /* ── drawing state ── */
 let drawnPts   = [];
 let hoveredIdx = -1;
+let _lastDrawKey = '';  /* tracks last drawn state to skip no-op redraws */
 
 const spinnerEl = document.getElementById('spinner');
 let _spinnerRAF = 0;
@@ -545,6 +546,10 @@ function draw() {
   sizeCanvas();
   const spiralKey = document.getElementById('spiralType').value;
   const subset    = document.getElementById('subset').value;
+  const zoomVal = SPIRALS[spiralKey].isHilbert ? hilbertOrder : arcLen;
+  const drawKey = `${spiralKey},${subset},${zoomVal},${hoveredIdx},${cssW},${cssH}`;
+  if (drawKey === _lastDrawKey) return;
+  _lastDrawKey = drawKey;
   const spiral    = SPIRALS[spiralKey];
   const CX = cssW / 2, CY = cssH / 2;
 
