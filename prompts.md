@@ -255,3 +255,10 @@ Also (and this predates today's work), sometimes there are vacant subsquares lik
 ```
 11->12 takes nearly 6s. Can this be sped up?
 ```
+
+### `2026-03-02 17:45 PST`
+```
+Now while going from 11 to 12 the canvas blanks during the computation, and also the spinner doesn't appear.
+Replacing blanking with retaining the old canvas contents until ready to flip to new content.
+Also add caching/memoization for data already viewed so that flipping between views or zoom levels that have already been visited is ~instant.
+```

@@ -608,81 +608,111 @@ self.onmessage = function(e) {
 const _hilbertWorkerBlob = new Blob([_hilbertWorkerCode], { type: 'application/javascript' });
 const _hilbertWorkerURL = URL.createObjectURL(_hilbertWorkerBlob);
 let _hilbertWorker = null;
-let _hilbertSeq = 0;  /* sequence counter to discard stale results */
+let _hilbertSeq = 0;
+const _hilbertCache = new Map();  /* "order,subset" → { buf, hlCount } */
+
+function _hilbertPaint(buf, hlCount, order, spiral, subset, effectiveN) {
+  sizeCanvas();
+  ctx.clearRect(0, 0, cssW, cssH);
+  const N = 1 << order;
+  const imgData = new ImageData(new Uint8ClampedArray(buf), N, N);
+  const PAD = 36;
+  const drawSz = Math.min(cssW, cssH) - 2 * PAD;
+  const cellPx = Math.max(1, Math.round(drawSz / N));
+  const upSz = cellPx * N;
+  const off = new OffscreenCanvas(upSz, upSz);
+  const octx = off.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  const tmp = new OffscreenCanvas(N, N);
+  tmp.getContext('2d').putImageData(imgData, 0, 0);
+  octx.drawImage(tmp, 0, 0, upSz, upSz);
+  const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
+  ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
+  drawnPts = [];
+  document.getElementById('subtitleText').textContent =
+    'Integers along a space-filling curve \u00b7 scroll to change iteration depth';
+  document.getElementById('infoText').innerHTML =
+    `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+    `order = ${order} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
+  /* Mark as painted so no-op check works */
+  const r = wrap.getBoundingClientRect();
+  const sz = Math.floor(Math.min(r.width, r.height)) - 4;
+  _lastDrawKey = `hilbert,${subset},${order},-1,${sz}`;
+  spinnerEl.hidden = true;
+}
 
 function _hilbertRenderAsync(order, subset, spiral, effectiveN) {
+  const cacheKey = `${order},${subset}`;
+  /* Cache hit → paint immediately */
+  const cached = _hilbertCache.get(cacheKey);
+  if (cached) {
+    _hilbertPaint(cached.buf, cached.hlCount, order, spiral, subset, effectiveN);
+    return;
+  }
+  /* Show spinner (old canvas stays visible underneath) */
   spinnerEl.hidden = false;
   if (_hilbertWorker) _hilbertWorker.terminate();
   _hilbertWorker = new Worker(_hilbertWorkerURL);
   const seq = ++_hilbertSeq;
   _hilbertWorker.onmessage = function(e) {
-    if (seq !== _hilbertSeq) return;  /* stale */
+    if (seq !== _hilbertSeq) return;
     const { buf, hlCount, order: ord } = e.data;
-    const N = 1 << ord;
-    const imgData = new ImageData(new Uint8ClampedArray(buf), N, N);
-    sizeCanvas();
-    ctx.clearRect(0, 0, cssW, cssH);
-    const PAD = 36;
-    const drawSz = Math.min(cssW, cssH) - 2 * PAD;
-    const cellPx = Math.max(1, Math.round(drawSz / N));
-    const upSz = cellPx * N;
-    const off = new OffscreenCanvas(upSz, upSz);
-    const octx = off.getContext('2d');
-    octx.imageSmoothingEnabled = false;
-    const tmp = new OffscreenCanvas(N, N);
-    tmp.getContext('2d').putImageData(imgData, 0, 0);
-    octx.drawImage(tmp, 0, 0, upSz, upSz);
-    const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
-    ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
-    drawnPts = [];
-    document.getElementById('infoText').innerHTML =
-      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
-      `order = ${ord} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
-    spinnerEl.hidden = true;
+    /* Cache result (copy buffer since we'll reuse it) */
+    _hilbertCache.set(cacheKey, { buf: buf.slice(0), hlCount });
+    _hilbertPaint(buf, hlCount, ord, spiral, subset, effectiveN);
   };
   _hilbertWorker.postMessage({ order, subset, total: effectiveN });
-  /* Update info immediately to show progress */
-  drawnPts = [];
   document.getElementById('infoText').innerHTML =
     `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
     `order = ${order} &middot; computing…`;
 }
 let _spinnerRAF = 0;
 function drawAsync() {
-  spinnerEl.hidden = false;
   cancelAnimationFrame(_spinnerRAF);
-  /* Double-rAF: first frame paints the spinner, second does the work */
-  _spinnerRAF = requestAnimationFrame(() => {
-    _spinnerRAF = requestAnimationFrame(() => { draw(); spinnerEl.hidden = true; });
-  });
+  /* For worker-based paths, draw() returns instantly and manages its own spinner.
+     For synchronous paths, double-rAF lets the spinner paint first. */
+  const spiralKey = document.getElementById('spiralType').value;
+  const spiral = SPIRALS[spiralKey];
+  const isWorkerPath = spiral && spiral.isHilbert &&
+    ((1 << hilbertOrder) * (1 << hilbertOrder)) > 50000;
+  if (isWorkerPath) {
+    draw();  /* non-blocking: dispatches to worker, spinner managed there */
+  } else {
+    spinnerEl.hidden = false;
+    _spinnerRAF = requestAnimationFrame(() => {
+      _spinnerRAF = requestAnimationFrame(() => { draw(); spinnerEl.hidden = true; });
+    });
+  }
 }
 
 function draw() {
   const spiralKey = document.getElementById('spiralType').value;
   const subset    = document.getElementById('subset').value;
   const spiral    = SPIRALS[spiralKey];
+  const isHilbert = !!spiral.isHilbert;
+  const effectiveN = isHilbert ? (1 << hilbertOrder) * (1 << hilbertOrder) : arcLen;
+
+  /* ── Hilbert bitmap fast-path (offload to Web Worker) ──
+     Don't call sizeCanvas() here — keeps old canvas visible while computing.
+     Don't set _lastDrawKey — that happens when the result is painted. */
+  if (isHilbert && effectiveN > 50000) {
+    _hilbertRenderAsync(hilbertOrder, subset, spiral, effectiveN);
+    return;
+  }
+
   /* Check if anything changed before touching the canvas */
   const r = wrap.getBoundingClientRect();
   const pendingSz = Math.floor(Math.min(r.width, r.height)) - 4;
-  const zoomVal = spiral.isHilbert ? hilbertOrder : arcLen;
+  const zoomVal = isHilbert ? hilbertOrder : arcLen;
   const drawKey = `${spiralKey},${subset},${zoomVal},${hoveredIdx},${pendingSz}`;
   if (drawKey === _lastDrawKey) return;
   _lastDrawKey = drawKey;
   sizeCanvas();
   const CX = cssW / 2, CY = cssH / 2;
 
-  const isHilbert = !!spiral.isHilbert;
-  const effectiveN = isHilbert ? (1 << hilbertOrder) * (1 << hilbertOrder) : arcLen;
-
   document.getElementById('subtitleText').textContent = isHilbert
     ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
     : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
-
-  /* ── Hilbert bitmap fast-path (offload to Web Worker) ── */
-  if (isHilbert && effectiveN > 50000) {
-    _hilbertRenderAsync(hilbertOrder, subset, spiral, effectiveN);
-    return;
-  }
 
   const pts = isHilbert ? spiral.computePoints(hilbertOrder) : spiral.computePoints(arcLen);
   const fib = fibSet(effectiveN);
