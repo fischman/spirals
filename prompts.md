@@ -262,3 +262,18 @@ Now while going from 11 to 12 the canvas blanks during the computation, and also
 Replacing blanking with retaining the old canvas contents until ready to flip to new content.
 Also add caching/memoization for data already viewed so that flipping between views or zoom levels that have already been visited is ~instant.
 ```
+
+### `2026-03-02 17:52 PST`
+```
+Gimme some JS to run in DevTools to see the sizes of the different memo/caches being used now.
+```
+
+### `2026-03-02 17:53 PST`
+```
+Prime sieve shows 0 bytes even though I've zoomed around on https://spiral.exe.xyz:8000/index.html?v=1#sacks,primes,24924
+```
+
+### `2026-03-02 17:54 PST`
+```
+no, I want every spiral type to use a shared sieve of primes.
+```

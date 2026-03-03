@@ -151,6 +151,7 @@
 
 /* ── number-theoretic helpers ── */
 function isPrime(n) {
+  if (_sieve && n <= _sieveMax) return !!_sieve[n];
   if (n < 2) return false;
   if (n < 4) return true;
   if (n % 2 === 0 || n % 3 === 0) return false;
@@ -217,25 +218,6 @@ function inSubset(n, subset, fib) {
     case 'triangular': return isTriangular(n);
     case 'semiprimes': return semiprimeFactors(n) !== null;
   }
-}
-/* Sieve-accelerated variant for bulk bitmap rendering */
-function inSubsetSieve(n, subset, fib, sieve) {
-  switch (subset) {
-    case 'primes':     return !!sieve[n];
-    case 'semiprimes': return semiprimeFactorsSieve(n, sieve) !== null;
-    default:           return inSubset(n, subset, fib);
-  }
-}
-function semiprimeFactorsSieve(n, sieve) {
-  if (n < 4) return null;
-  for (let i = 2; i * i <= n; i++) {
-    if (n % i === 0) {
-      const j = n / i;
-      if (sieve[i] && sieve[j]) return [i, j];
-      return null;
-    }
-  }
-  return null;
 }
 
 /* ══════════════════════════════════════════
@@ -713,6 +695,9 @@ function draw() {
   document.getElementById('subtitleText').textContent = isHilbert
     ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
     : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
+
+  /* Pre-build sieve so isPrime()/semiprimeFactors() use O(1) lookups */
+  if (subset === 'primes' || subset === 'semiprimes') primeSieve(effectiveN);
 
   const pts = isHilbert ? spiral.computePoints(hilbertOrder) : spiral.computePoints(arcLen);
   const fib = fibSet(effectiveN);
