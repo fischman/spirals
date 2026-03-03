@@ -543,14 +543,17 @@ function drawAsync() {
 }
 
 function draw() {
-  sizeCanvas();
   const spiralKey = document.getElementById('spiralType').value;
   const subset    = document.getElementById('subset').value;
-  const zoomVal = SPIRALS[spiralKey].isHilbert ? hilbertOrder : arcLen;
-  const drawKey = `${spiralKey},${subset},${zoomVal},${hoveredIdx},${cssW},${cssH}`;
+  const spiral    = SPIRALS[spiralKey];
+  /* Check if anything changed before touching the canvas */
+  const r = wrap.getBoundingClientRect();
+  const pendingSz = Math.floor(Math.min(r.width, r.height)) - 4;
+  const zoomVal = spiral.isHilbert ? hilbertOrder : arcLen;
+  const drawKey = `${spiralKey},${subset},${zoomVal},${hoveredIdx},${pendingSz}`;
   if (drawKey === _lastDrawKey) return;
   _lastDrawKey = drawKey;
-  const spiral    = SPIRALS[spiralKey];
+  sizeCanvas();
   const CX = cssW / 2, CY = cssH / 2;
 
   const isHilbert = !!spiral.isHilbert;
@@ -582,14 +585,20 @@ function draw() {
         data[idx] = 0x44; data[idx+1] = 0x44; data[idx+2] = 0x4e; data[idx+3] = 255;
       }
     }
-    const off = new OffscreenCanvas(N, N);
-    off.getContext('2d').putImageData(imgData, 0, 0);
     const PAD = 36;
     const drawSz = Math.min(cssW, cssH) - 2 * PAD;
+    /* Scale to an exact multiple of N to avoid Moiré/checkerboard artifacts,
+       then let the final drawImage do a clean integer-ratio scale. */
+    const cellPx = Math.max(1, Math.round(drawSz / N));
+    const upSz = cellPx * N;
+    const off = new OffscreenCanvas(upSz, upSz);
+    const octx = off.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    const tmp = new OffscreenCanvas(N, N);
+    tmp.getContext('2d').putImageData(imgData, 0, 0);
+    octx.drawImage(tmp, 0, 0, upSz, upSz);
     const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, dx, dy, drawSz, drawSz);
-    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
     drawnPts = [];
     document.getElementById('infoText').innerHTML =
       `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +

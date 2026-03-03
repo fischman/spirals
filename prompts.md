@@ -241,3 +241,12 @@ Memoize inSubsetSieve for a given max N. When N is smaller than the memoized ver
 ```
 While viewing https://spiral.exe.xyz:8000/index.html?v=1#hilbert,primes,11 after it's fully loaded, moving teh mouse across the canvas triggers a 1.5s rAF. Short-circuit rAF's that don't involve a change.
 ```
+
+### `2026-03-02 17:28 PST`
+```
+Last commit is busted: when mousing out of the canvas it now clears (both spiral and yellow dots are gone). Need to make draw idempotent, not clear, before early return.
+
+Also (and this predates today's work), sometimes there are vacant subsquares like this screenshot. I suspect it has to do with devtools being open.
+
+ [/tmp/shelley-screenshots/upload_2745a76f08e33e2f.png]
+```
