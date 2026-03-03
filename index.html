@@ -452,21 +452,23 @@ const SPIRALS = {
 };
 
 /* ── Hilbert curve index → (x,y) mapping ── */
+/* Return value reused to avoid allocation in hot loops */
+const _hxy = [0, 0];
 function hilbertD2xy(order, d) {
-  let x = 0, y = 0;
+  let x = 0, y = 0, t;
   for (let s = 1; s < (1 << order); s <<= 1) {
     const rx = (d >>> 1) & 1;
     const ry = (d ^ rx) & 1;
-    // rotate
     if (ry === 0) {
       if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
-      [x, y] = [y, x];
+      t = x; x = y; y = t;
     }
     x += s * rx;
     y += s * ry;
     d >>>= 2;
   }
-  return [x, y];
+  _hxy[0] = x; _hxy[1] = y;
+  return _hxy;
 }
 
 /* ══════════════════════════════════════════
@@ -532,6 +534,119 @@ let hoveredIdx = -1;
 let _lastDrawKey = '';  /* tracks last drawn state to skip no-op redraws */
 
 const spinnerEl = document.getElementById('spinner');
+
+/* ── Hilbert bitmap Web Worker (runs heavy computation off main thread) ── */
+const _hilbertWorkerCode = `
+self.onmessage = function(e) {
+  const { order, subset, total } = e.data;
+  const N = 1 << order;
+  const Nm1 = N - 1, lim = N;
+
+  /* Sieve of Eratosthenes */
+  let sieve = null;
+  if (subset === 'primes' || subset === 'semiprimes') {
+    sieve = new Uint8Array(total + 1);
+    if (total >= 2) sieve[2] = 1;
+    for (let i = 3; i <= total; i += 2) sieve[i] = 1;
+    for (let i = 3; i * i <= total; i += 2)
+      if (sieve[i]) for (let j = i * i; j <= total; j += 2 * i) sieve[j] = 0;
+  }
+
+  /* Fibonacci set */
+  const fibS = new Set();
+  { let a = 1, b = 1; while (a <= total) { fibS.add(a); const t = a; a = b; b = t + b; } }
+
+  /* Subset test */
+  function isSquare(n) { const s = Math.round(Math.sqrt(n)); return s * s === n; }
+  function isTriangular(n) { const d = 8*n+1, s = Math.round(Math.sqrt(d)); return s*s === d; }
+  function inSub(n) {
+    switch (subset) {
+      case 'all': return true;
+      case 'odd': return n % 2 === 1;
+      case 'even': return n % 2 === 0;
+      case 'squares': return isSquare(n);
+      case 'primes': return !!sieve[n];
+      case 'fibonacci': return fibS.has(n);
+      case 'triangular': return isTriangular(n);
+      case 'semiprimes': {
+        if (n < 4) return false;
+        for (let i = 2; i * i <= n; i++) {
+          if (n % i === 0) { const j = n / i; return !!(sieve[i] && sieve[j]); }
+        }
+        return false;
+      }
+    }
+  }
+
+  const buf = new ArrayBuffer(N * N * 4);
+  const data32 = new Uint32Array(buf);
+  const HI = 0xFF15CCFA;  /* ABGR for #facc15 */
+  const LO = 0xFF4E4444;  /* ABGR for #44444e */
+  let hlCount = 0;
+
+  for (let d = 0; d < total; d++) {
+    let hx = 0, hy = 0, hd = d, ht;
+    for (let s = 1; s < lim; s <<= 1) {
+      const rx = (hd >>> 1) & 1;
+      const ry = (hd ^ rx) & 1;
+      if (ry === 0) {
+        if (rx === 1) { hx = s - 1 - hx; hy = s - 1 - hy; }
+        ht = hx; hx = hy; hy = ht;
+      }
+      hx += s * rx;
+      hy += s * ry;
+      hd >>>= 2;
+    }
+    const hit = inSub(d + 1);
+    if (hit) hlCount++;
+    data32[(Nm1 - hy) * N + hx] = hit ? HI : LO;
+  }
+
+  self.postMessage({ buf, hlCount, order }, [buf]);
+};
+`;
+const _hilbertWorkerBlob = new Blob([_hilbertWorkerCode], { type: 'application/javascript' });
+const _hilbertWorkerURL = URL.createObjectURL(_hilbertWorkerBlob);
+let _hilbertWorker = null;
+let _hilbertSeq = 0;  /* sequence counter to discard stale results */
+
+function _hilbertRenderAsync(order, subset, spiral, effectiveN) {
+  spinnerEl.hidden = false;
+  if (_hilbertWorker) _hilbertWorker.terminate();
+  _hilbertWorker = new Worker(_hilbertWorkerURL);
+  const seq = ++_hilbertSeq;
+  _hilbertWorker.onmessage = function(e) {
+    if (seq !== _hilbertSeq) return;  /* stale */
+    const { buf, hlCount, order: ord } = e.data;
+    const N = 1 << ord;
+    const imgData = new ImageData(new Uint8ClampedArray(buf), N, N);
+    sizeCanvas();
+    ctx.clearRect(0, 0, cssW, cssH);
+    const PAD = 36;
+    const drawSz = Math.min(cssW, cssH) - 2 * PAD;
+    const cellPx = Math.max(1, Math.round(drawSz / N));
+    const upSz = cellPx * N;
+    const off = new OffscreenCanvas(upSz, upSz);
+    const octx = off.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    const tmp = new OffscreenCanvas(N, N);
+    tmp.getContext('2d').putImageData(imgData, 0, 0);
+    octx.drawImage(tmp, 0, 0, upSz, upSz);
+    const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
+    ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
+    drawnPts = [];
+    document.getElementById('infoText').innerHTML =
+      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+      `order = ${ord} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
+    spinnerEl.hidden = true;
+  };
+  _hilbertWorker.postMessage({ order, subset, total: effectiveN });
+  /* Update info immediately to show progress */
+  drawnPts = [];
+  document.getElementById('infoText').innerHTML =
+    `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
+    `order = ${order} &middot; computing…`;
+}
 let _spinnerRAF = 0;
 function drawAsync() {
   spinnerEl.hidden = false;
@@ -563,46 +678,9 @@ function draw() {
     ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
     : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
 
-  /* ── Hilbert bitmap fast-path (skips object allocation + arc() calls) ── */
+  /* ── Hilbert bitmap fast-path (offload to Web Worker) ── */
   if (isHilbert && effectiveN > 50000) {
-    ctx.clearRect(0, 0, cssW, cssH);
-    const N = 1 << hilbertOrder;
-    /* Pre-compute subset membership via bulk methods */
-    const fib = fibSet(effectiveN);
-    const sieve = (subset === 'primes' || subset === 'semiprimes') ? primeSieve(effectiveN) : null;
-    const imgData = new ImageData(N, N);
-    const data = imgData.data;
-    let hlCount = 0;
-    for (let d = 0; d < effectiveN; d++) {
-      const [x, y] = hilbertD2xy(hilbertOrder, d);
-      const n = d + 1;
-      const hit = sieve ? inSubsetSieve(n, subset, fib, sieve) : inSubset(n, subset, fib);
-      if (hit) hlCount++;
-      const idx = ((N - 1 - y) * N + x) * 4;
-      if (hit) {
-        data[idx] = 0xfa; data[idx+1] = 0xcc; data[idx+2] = 0x15; data[idx+3] = 255;
-      } else {
-        data[idx] = 0x44; data[idx+1] = 0x44; data[idx+2] = 0x4e; data[idx+3] = 255;
-      }
-    }
-    const PAD = 36;
-    const drawSz = Math.min(cssW, cssH) - 2 * PAD;
-    /* Scale to an exact multiple of N to avoid Moiré/checkerboard artifacts,
-       then let the final drawImage do a clean integer-ratio scale. */
-    const cellPx = Math.max(1, Math.round(drawSz / N));
-    const upSz = cellPx * N;
-    const off = new OffscreenCanvas(upSz, upSz);
-    const octx = off.getContext('2d');
-    octx.imageSmoothingEnabled = false;
-    const tmp = new OffscreenCanvas(N, N);
-    tmp.getContext('2d').putImageData(imgData, 0, 0);
-    octx.drawImage(tmp, 0, 0, upSz, upSz);
-    const dx = (cssW - drawSz) / 2, dy = (cssH - drawSz) / 2;
-    ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
-    drawnPts = [];
-    document.getElementById('infoText').innerHTML =
-      `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
-      `order = ${hilbertOrder} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
+    _hilbertRenderAsync(hilbertOrder, subset, spiral, effectiveN);
     return;
   }
 

@@ -250,3 +250,8 @@ Also (and this predates today's work), sometimes there are vacant subsquares lik
 
  [/tmp/shelley-screenshots/upload_2745a76f08e33e2f.png]
 ```
+
+### `2026-03-02 17:30 PST`
+```
+11->12 takes nearly 6s. Can this be sped up?
+```
