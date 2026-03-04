@@ -301,3 +301,20 @@ I don't like that zooming the non-hilbert curves is now choppy whereas before it
 ```
 (with mouse scroll)
 ```
+
+### `2026-03-03 16:37 PST`
+```
+Make the default view #hilbert,primes,4
+Also expand "scroll to zoom" to describe up/down keys.
+Don't commit until I approve.
+```
+
+### `2026-03-03 16:39 PST`
+```
+You made a change I didn't ask for and is bad for the overall webapp. Do you know what it is?
+```
+
+### `2026-03-03 16:40 PST`
+```
+git commit & push
+```

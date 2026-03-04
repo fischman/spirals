@@ -76,7 +76,7 @@
 
 <div class="header">
   <h1>&#127744; Integers on Spirals</h1>
-  <p class="subtitle" id="subtitleText">Points at integer arc-length from the origin &middot; scroll to zoom</p>
+  <p class="subtitle" id="subtitleText">Points at integer arc-length from the origin &middot; scroll or &uarr;&darr; to zoom</p>
 </div>
 
 <div class="controls">
@@ -84,12 +84,12 @@
     <select id="spiralType">
       <option value="archimedean">1 &mdash; Archimedean</option>
       <option value="fermat">2 &mdash; Fermat&rsquo;s</option>
-      <option value="golden" selected>3 &mdash; Golden (Fibonacci)</option>
+      <option value="golden">3 &mdash; Golden (Fibonacci)</option>
       <option value="theodorus">4 &mdash; Theodorus</option>
       <option value="sacks">5 &mdash; Sacks</option>
       <option value="square">6 &mdash; Square</option>
       <option value="hexagonal">7 &mdash; Hexagonal</option>
-      <option value="hilbert">8 &mdash; Hilbert Curve</option>
+      <option value="hilbert" selected>8 &mdash; Hilbert Curve</option>
     </select>
   </label>
   <label>Highlight
@@ -98,10 +98,10 @@
       <option value="odd">&#x21E7;2 &mdash; Odd</option>
       <option value="even">&#x21E7;3 &mdash; Even</option>
       <option value="squares">&#x21E7;4 &mdash; Perfect squares</option>
-      <option value="primes">&#x21E7;5 &mdash; Primes</option>
+      <option value="primes" selected>&#x21E7;5 &mdash; Primes</option>
       <option value="fibonacci">&#x21E7;6 &mdash; Fibonacci</option>
       <option value="triangular">&#x21E7;7 &mdash; Triangular</option>
-      <option value="semiprimes" selected>&#x21E7;8 &mdash; Products of two primes</option>
+      <option value="semiprimes">&#x21E7;8 &mdash; Products of two primes</option>
     </select>
   </label>
 </div>
@@ -506,7 +506,7 @@ function pushHash() {
 /* ── zoom state ── */
 const MIN_ARC = 8;
 let arcLen = 108;
-let hilbertOrder = 3;  /* iteration depth for Hilbert curve (1..9) */
+let hilbertOrder = 4;  /* iteration depth for Hilbert curve */
 const MIN_HILBERT = 1;
 
 
@@ -612,7 +612,7 @@ function _hilbertPaint(buf, hlCount, order, spiral, subset, effectiveN) {
   ctx.drawImage(off, 0, 0, upSz, upSz, dx, dy, drawSz, drawSz);
   drawnPts = [];
   document.getElementById('subtitleText').textContent =
-    'Integers along a space-filling curve \u00b7 scroll to change iteration depth';
+    'Integers along a space-filling curve \u00b7 scroll or \u2191\u2193 to zoom';
   document.getElementById('infoText').innerHTML =
     `<b>${spiral.name}</b> &mdash; ${spiral.desc}<br>` +
     `order = ${order} &middot; ${effectiveN.toLocaleString()} cells &middot; <b>${hlCount.toLocaleString()}</b> highlighted (${subset}).`;
@@ -693,8 +693,8 @@ function draw() {
   const CX = cssW / 2, CY = cssH / 2;
 
   document.getElementById('subtitleText').textContent = isHilbert
-    ? 'Integers along a space-filling curve \u00b7 scroll to change iteration depth'
-    : 'Points at integer arc-length from the origin \u00b7 scroll to zoom';
+    ? 'Integers along a space-filling curve \u00b7 scroll or \u2191\u2193 to zoom'
+    : 'Points at integer arc-length from the origin \u00b7 scroll or \u2191\u2193 to zoom';
 
   /* Pre-build sieve so isPrime()/semiprimeFactors() use O(1) lookups */
   if (subset === 'primes' || subset === 'semiprimes') primeSieve(effectiveN);
