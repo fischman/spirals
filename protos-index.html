@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hilbert Prime Product Prototypes</title>
+<style>
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+  h1 { color: var(--accent); margin-bottom: 0.5rem; }
+  .subtitle { color: var(--dim); margin-bottom: 2rem; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  .card { background: #1a1a22; border: 1px solid #333; border-radius: 10px;
+    padding: 1.2rem 1.5rem; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent); }
+  .card h2 { color: var(--hi); font-size: 1rem; margin-bottom: 0.4rem; }
+  .card h2 a { color: inherit; text-decoration: none; }
+  .card h2 a:hover { text-decoration: underline; }
+  .card p { color: var(--dim); font-size: 0.85rem; line-height: 1.5; }
+  .card .tag { display: inline-block; background: #2a2a34; color: var(--accent);
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>△ Hilbert Prime Product Prototypes</h1>
+  <p class="subtitle">5 approaches to visualizing semiprime triangles on Hilbert curves</p>
+  <div class="grid">
+    <div class="card">
+      <h2><a href="proto1-triangle-explorer.html">1. Triangle Explorer — Zoom to Product</a></h2>
+      <p>Enter two primes, see the triangle on a Hilbert curve. Auto-zooms to place the product at bottom-right. Overlay multiple products with distinct colors. Toggle fuse path, grid, auto-fit order.</p>
+      <span class="tag">interactive zoom</span> <span class="tag">multi-overlay</span> <span class="tag">fuse path</span>
+    </div>
+    <div class="card">
+      <h2><a href="proto2.html">2. Animated Fuse Burn</a></h2>
+      <p>Watch a "fuse" animate along the Hilbert curve from origin to p×q. Marks p and q as it passes them, then completes the triangle. Queue multiple products for sequential playback with speed control.</p>
+      <span class="tag">animation</span> <span class="tag">fuse burn</span> <span class="tag">queue playback</span>
+    </div>
+    <div class="card">
+      <h2><a href="proto3.html">3. Small Multiples Triangle Grid</a></h2>
+      <p>A grid of thumbnails, each showing one semiprime’s triangle. Fix one prime, vary the other. Sort by product, area, or perimeter. Click for detail view with full stats. Color-coded by triangle area.</p>
+      <span class="tag">small multiples</span> <span class="tag">comparison</span> <span class="tag">area heatmap</span>
+    </div>
+    <div class="card">
+      <h2><a href="proto4.html">4. Overlay Comparator</a></h2>
+      <p>All triangles for a range of prime pairs overlaid on one curve. Semi-transparent fills create a heat effect. Product matrix, area histogram, region density heatmap. Step-through and cumulative modes.</p>
+      <span class="tag">overlay heat</span> <span class="tag">product matrix</span> <span class="tag">statistics</span>
+    </div>
+    <div class="card">
+      <h2><a href="proto5.html">5. Quadrant Zoom Decomposition</a></h2>
+      <p>Shows the recursive structure of where products land. Animated zoom through quadrants (NW→NE→SE…). Color-coded quadrants reveal the Hilbert curve’s self-similarity. Side-by-side comparison mode.</p>
+      <span class="tag">recursive zoom</span> <span class="tag">quadrant path</span> <span class="tag">side-by-side</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -318,3 +318,390 @@ You made a change I didn't ask for and is bad for the overall webapp. Do you kno
 ```
 git commit & push
 ```
+
+### `2026-03-03 19:27 PST`
+```
+Explore options for hilbert visualization of prime products. Consider zooming specifically to the product of two primes showing as far to the bottom right as possible. Then draw the triangle to get you there. Ideally be able to overlay the fuse for different prime products and see how the triangles change over these data.
+Prototype 5 different approaches, each in a single commit on a single work tree+branch. Do not merge to main or change state in ~/spirals
+```
+
+### `2026-03-03 19:28 PST`
+```
+You are building prototype 1 of 5 for a Hilbert curve prime-product visualization tool. The output should be a COMPLETE, SELF-CONTAINED HTML file.
+
+## Context
+The parent project is "Integers on Spirals" - it already has a Hilbert curve view that colors semiprimes (products of two primes) on a Hilbert space-filling curve. We want to explore NEW visualization approaches specifically for prime products on Hilbert curves.
+
+## Key Concepts
+- A **semiprime** is a product of exactly two primes (e.g. 6=2×3, 15=3×5, 77=7×11)
+- The **Hilbert curve** maps 1D integers to 2D grid positions. `hilbertD2xy(order, d)` converts index d to (x,y).
+- **"Zoom to bottom-right"**: On the Hilbert curve, the bottom-right quadrant contains the largest indices. Zooming to a specific semiprime p×q means showing the region of the curve around index p×q.
+- **"Triangle"**: For semiprime n=p×q, the triangle connects the Hilbert positions of p, q, and n=p×q. 
+- **"Fuse"**: The path along the Hilbert curve from the origin to the semiprime position - like a fuse burning toward the product.
+- **Overlay**: Showing multiple triangles for different semiprimes simultaneously to compare their shapes.
+
+## Prototype 1: "Triangle Explorer with Zoom-to-Product"
+Build an interactive single-page app where:
+1. User can select a specific semiprime (or enter two primes p and q) to focus on
+2. The Hilbert curve is drawn at a suitable order to contain p×q
+3. The view auto-zooms/pans to show the product p×q positioned as far to the bottom-right as possible
+4. A filled triangle is drawn connecting the Hilbert positions of p, q, and p×q
+5. A "fuse" line traces the Hilbert curve path from 0 to p×q, highlighted
+6. Controls: dropdown/input to pick primes, slider for Hilbert order, toggle fuse on/off
+7. Show the triangle vertices labeled with p, q, and p×q
+8. Allow overlaying multiple prime products (checkboxes or multi-select) to compare triangles
+9. Each overlay gets a distinct color
+
+Style: dark theme (#0e0e12 bg, #7dd3fc accent, #facc15 highlight). Make it look polished.
+
+The HTML must include ALL JavaScript inline. Use canvas for rendering. Include the Hilbert d2xy function:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+```
+
+Simple sieve for primes:
+```javascript
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Output ONLY the complete HTML file content, nothing else. No markdown fences. Start with `<!DOCTYPE html>`.
+```
+
+### `2026-03-03 19:28 PST`
+```
+You are building prototype 2 of 5 for a Hilbert curve prime-product visualization tool. The output should be a COMPLETE, SELF-CONTAINED HTML file.
+
+## Context
+The parent project is "Integers on Spirals" - it visualizes integers on various curves. We want NEW visualization approaches for prime products (semiprimes = products of exactly two primes) on Hilbert curves.
+
+## Key Concepts
+- A **semiprime** n = p×q where p,q are both prime
+- The **Hilbert curve** maps 1D integer → 2D grid via `hilbertD2xy(order, d)`
+- On the Hilbert curve at order k, index 0 is top-left and index 4^k - 1 is bottom-right area
+- **Triangle**: connects Hilbert-curve positions of (p), (q), and (p×q)
+- **Fuse**: the portion of Hilbert curve from start to the semiprime position
+
+## Prototype 2: "Animated Fuse Burn with Triangle Morphing"
+Build a visualization where:
+1. Show a Hilbert curve (order adjustable 3-8) drawn as a thin path
+2. User picks two primes p and q from dropdowns (populated with first 50 primes)
+3. An ANIMATED "fuse" burns along the Hilbert curve from index 0 to index p*q
+4. As the fuse burns, it lights up each cell it passes through
+5. When the fuse reaches p, highlight it and label it. Same for q. When it reaches p*q, complete the triangle.
+6. The triangle (p, q, p*q positions) morphs/animates when the user changes p or q
+7. Show a "play" button to re-run the fuse animation
+8. Speed control for the animation
+9. Show key stats: p, q, p*q, Hilbert positions, triangle area
+10. Multiple products can be queued for sequential animation, each in a different color
+
+Style: dark theme (#0e0e12 bg, #7dd3fc accent, #facc15 highlight). Polish it.
+
+Include this Hilbert function and sieve inline:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Output ONLY the complete HTML file content, nothing else. No markdown fences. Start with `<!DOCTYPE html>`.
+```
+
+### `2026-03-03 19:29 PST`
+```
+You are building prototype 3 of 5 for a Hilbert curve prime-product visualization tool. The output should be a COMPLETE, SELF-CONTAINED HTML file.
+
+## Context
+We want to visualize products of two primes (semiprimes) on Hilbert space-filling curves, with focus on the geometric "triangle" formed by the three Hilbert positions of p, q, and p*q.
+
+## Prototype 3: "Triangle Heatmap / Comparison Grid"
+Build a visualization that shows a GRID of small Hilbert curves side-by-side, each showing a different semiprime's triangle. This lets you visually compare how the triangle shape changes across different factor pairs.
+
+Features:
+1. Generate a grid of small multiples (e.g. 4×4 or 5×5 thumbnails) 
+2. Each thumbnail shows a Hilbert curve of a given order with ONE triangle highlighted
+3. The grid can be organized by: (a) fixing one prime and varying the other, (b) sorted by product size, (c) sorted by triangle area
+4. Clicking a thumbnail enlarges it in a detail panel on the right/below
+5. The detail panel shows the full Hilbert curve, the triangle with labeled vertices, and the "fuse" (Hilbert path from 0 to p*q highlighted)
+6. Controls: select the fixed prime, select the Hilbert order (3-7), select sort mode
+7. Color-code the triangles by their area or aspect ratio
+8. In the detail view, show stats: p, q, p*q, triangle area, centroid position
+
+The grid approach is the KEY differentiator - it's about comparing many triangles at once, like a "small multiples" chart.
+
+Style: dark theme (#0e0e12 bg, #7dd3fc accent, #facc15 highlight).
+
+Include these functions inline:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Output ONLY the complete HTML file content, nothing else. No markdown fences. Start with `<!DOCTYPE html>`.
+```
+
+### `2026-03-03 19:29 PST`
+```
+You are building prototype 4 of 5 for a Hilbert curve prime-product visualization tool. The output should be a COMPLETE, SELF-CONTAINED HTML file.
+
+## Context
+We want to visualize products of two primes (semiprimes) on Hilbert space-filling curves, with focus on the "triangle" formed by positions of p, q, and p*q, and how these triangles differ.
+
+## Prototype 4: "Interactive Overlay Comparator"  
+Build a visualization focused on OVERLAYING multiple semiprime triangles on a single Hilbert curve to see patterns.
+
+Features:
+1. A large Hilbert curve canvas (order 4-7 adjustable)
+2. Two "prime axes" - an X-axis prime selector (p) and a Y-axis prime selector (q)
+3. The user can select RANGES of primes for each axis (e.g. p from 2-13, q from 2-13)
+4. ALL triangles for all combinations in the selected range are drawn simultaneously as overlays
+5. Each triangle is semi-transparent; where many overlap, color intensifies (heat effect)
+6. Toggle between: (a) all overlays at once, (b) step through one at a time, (c) cumulative addition
+7. A 2D matrix/table below shows which p×q products are currently displayed, colored by triangle properties
+8. Hover over the matrix to highlight just that triangle on the curve
+9. Statistics panel showing: average triangle area, distribution of areas, most common regions on curve
+10. "Zoom to product" button: when you click a cell in the matrix, the view pans/zooms to center on that p*q position, showing it at the bottom-right of the visible region
+
+The KEY insight: by overlaying many triangles, you can see which REGIONS of the Hilbert curve are "popular" for products.
+
+Style: dark theme (#0e0e12 bg, #7dd3fc accent, #facc15 highlight). 
+
+Include these functions inline:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Output ONLY the complete HTML file content, nothing else. No markdown fences. Start with `<!DOCTYPE html>`.
+```
+
+### `2026-03-03 19:30 PST`
+```
+You are building prototype 5 of 5 for a Hilbert curve prime-product visualization tool. The output should be a COMPLETE, SELF-CONTAINED HTML file.
+
+## Context
+We want to visualize products of two primes (semiprimes) on Hilbert space-filling curves, with focus on the "triangle" (connecting Hilbert positions of p, q, and p*q) and the "fuse" (path along the curve to the product).
+
+## Prototype 5: "Zoom-to-Corner Deep Dive with Path Decomposition"
+This prototype focuses on the ZOOM concept - specifically showing how the Hilbert curve's recursive structure relates to where a semiprime lands.
+
+Features:
+1. Start with a full Hilbert curve at order 3-4
+2. User selects two primes p and q. The product p*q is computed.
+3. Automatically compute the minimum Hilbert order needed to contain p*q
+4. Show a QUADRANT DECOMPOSITION: the Hilbert curve at order k splits into 4 quadrants. Show which quadrant p*q falls in, then recursively which sub-quadrant, etc. Display this as a "zoom path" - a sequence of quadrant choices (like "SE → NW → NE → SW") from top level down to the cell.
+5. Animate the zoom: start full view, then zoom into the correct quadrant, then sub-quadrant, etc., each step showing the triangle getting larger
+6. At each zoom level, show the triangle connecting p, q, and p*q (some vertices may be outside the view - draw arrows pointing to off-screen vertices)
+7. Side panel shows the quadrant decomposition as a tree/path
+8. "Bottom-right emphasis": the view defaults to showing the product positioned at the bottom-right of the viewport, with the triangle stretching back toward upper-left where the smaller factors live
+9. Allow comparison: pick two different semiprimes and show their zoom decompositions side by side
+10. Color the Hilbert curve path differently in each quadrant to show the recursive structure
+
+The KEY differentiator: this is about understanding the RECURSIVE STRUCTURE of where products land on the Hilbert curve.
+
+Style: dark theme (#0e0e12 bg, #7dd3fc accent, #facc15 highlight).
+
+Include these functions inline:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Output ONLY the complete HTML file content, nothing else. No markdown fences. Start with `<!DOCTYPE html>`.
+```
+
+### `2026-03-03 19:31 PST`
+```
+Done yet? Show me your output.
+```
+
+### `2026-03-03 19:33 PST`
+```
+Done yet? Show me your output.
+```
+
+### `2026-03-03 19:35 PST`
+```
+Done yet? Show me your output.
+```
+
+### `2026-03-03 19:35 PST`
+```
+Done yet? Show me your output.
+```
+
+### `2026-03-03 19:36 PST`
+```
+Done yet? Show me your output.
+```
+
+### `2026-03-03 19:37 PST`
+```
+You are building prototype 2 of 5 for a Hilbert curve prime-product visualization. Write a COMPLETE, SELF-CONTAINED HTML file to /home/exedev/spirals-hilbert-protos/proto2.html.
+
+## Prototype 2: "Animated Fuse Burn with Triangle Morphing"
+
+Build a single-page app:
+1. Show a Hilbert curve (order adjustable 3-8 via slider) drawn as a thin blue path on dark background
+2. User picks two primes p and q from dropdowns (populated with first 50 primes)
+3. An ANIMATED "fuse" burns along the Hilbert curve from index 0 to index p*q, lighting up cells as it goes
+4. When the fuse reaches p, mark and label it. Same for q. When it reaches p*q, draw the completed triangle.
+5. Triangle connects Hilbert(p), Hilbert(q), Hilbert(p*q) with a semi-transparent fill and bright edges
+6. When user changes p or q, the triangle smoothly morphs/transitions to the new positions
+7. Play button to re-run fuse animation, speed slider
+8. Show stats: p, q, p*q, Hilbert coordinates, triangle area
+9. Multiple products can be queued (add button) for sequential animation, each with a different color
+10. "Zoom to fit" button that auto-pans/zooms to show the triangle
+
+Requirements:
+- ALL code inline in one HTML file
+- Use canvas for rendering
+- Dark theme: bg #0e0e12, accent #7dd3fc, highlight #facc15, dim #8a8a96
+- Must include these functions:
+
+```javascript
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+```
+
+Write the file to /home/exedev/spirals-hilbert-protos/proto2.html using the patch tool with overwrite operation. Make sure the HTML is complete and functional.
+```
+
+### `2026-03-03 19:40 PST`
+```
+Write the file now. Use the patch tool to write proto2.html. Don't check what exists - just write the HTML.
+```
