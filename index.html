@@ -563,7 +563,7 @@ self.onmessage = function(e) {
   const buf = new ArrayBuffer(N * N * 4);
   const data32 = new Uint32Array(buf);
   const HI = 0xFF15CCFA;  /* ABGR for #facc15 */
-  const LO = 0xFF4E4444;  /* ABGR for #44444e */
+  const LO = 0xFF171111;  /* ABGR for canvas bg #111117 */
   let hlCount = 0;
 
   for (let d = 0; d < total; d++) {
