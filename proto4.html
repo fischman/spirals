@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hilbert Semiprime Overlay Comparator</title>
+<style>
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15;
+          --panel: #151520; --border: #2a2a35; }
+  head, style, script { display: none !important; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, -apple-system, sans-serif;
+         display: flex; flex-direction: column; }
+
+  .header { flex-shrink: 0; text-align: center; padding: 10px 16px 6px; }
+  .header h1 { font-size: 1.15rem; color: var(--accent); letter-spacing: .03em; }
+  .header h1 span { color: var(--hi); }
+  .header .sub { font-size: .7rem; color: var(--dim); margin-top: 2px; }
+
+  .main { flex: 1; min-height: 0; display: flex; gap: 0; overflow: hidden; }
+
+  /* Left: Hilbert canvas */
+  .canvas-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .canvas-controls { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 6px 12px;
+                     align-items: center; justify-content: center; flex-shrink: 0; }
+  .canvas-controls label { font-size: .65rem; color: var(--dim); text-transform: uppercase;
+                           letter-spacing: .05em; display: flex; align-items: center; gap: 4px; }
+  .canvas-controls select, .canvas-controls button {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 3px 8px; font-size: .75rem; cursor: pointer; }
+  .canvas-controls button:hover { border-color: var(--accent); color: var(--accent); }
+  .canvas-controls button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .canvas-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+                 position: relative; padding: 4px; }
+  canvas#hilbert { background: #111117; border-radius: 8px; cursor: crosshair; display: block; }
+
+  /* Right: Controls + Matrix + Stats */
+  .side-panel { width: 340px; flex-shrink: 0; display: flex; flex-direction: column;
+                border-left: 1px solid var(--border); overflow-y: auto; }
+  .sp-section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .sp-section h3 { font-size: .72rem; color: var(--accent); text-transform: uppercase;
+                   letter-spacing: .06em; margin-bottom: 6px; }
+
+  .prime-range { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .prime-range span { font-size: .68rem; color: var(--dim); width: 28px; }
+  .prime-range select { background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+                        border-radius: 4px; padding: 2px 6px; font-size: .72rem; flex: 1; }
+
+  /* Matrix */
+  .matrix-wrap { overflow: auto; max-height: 260px; }
+  table.matrix { border-collapse: collapse; font-size: .62rem; }
+  table.matrix th { background: var(--panel); color: var(--dim); padding: 3px 6px;
+                    position: sticky; font-weight: 500; }
+  table.matrix th.row-h { left: 0; z-index: 2; }
+  table.matrix th.col-h { top: 0; z-index: 1; }
+  table.matrix th.corner { top: 0; left: 0; z-index: 3; }
+  table.matrix td { padding: 3px 5px; text-align: center; cursor: pointer;
+                    border: 1px solid var(--border); transition: all .15s; font-variant-numeric: tabular-nums; }
+  table.matrix td:hover { outline: 2px solid var(--hi); outline-offset: -2px; z-index: 4; position: relative; }
+  table.matrix td.highlighted { outline: 2px solid var(--hi); outline-offset: -2px; z-index: 4; position: relative; }
+  table.matrix td.beyond { color: #555; background: #0a0a0f; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: .68rem; }
+  .stat-label { color: var(--dim); }
+  .stat-value { color: var(--fg); font-weight: 600; text-align: right; }
+  .stat-value.accent { color: var(--accent); }
+  .stat-value.hi { color: var(--hi); }
+
+  .heatbar { height: 18px; border-radius: 3px; margin-top: 6px; background: #111117;
+             position: relative; overflow: hidden; }
+  .heatbar-inner { height: 100%; transition: width .3s; }
+
+  .distribution { display: flex; align-items: flex-end; gap: 1px; height: 40px; margin-top: 6px; }
+  .dist-bar { flex: 1; background: var(--accent); border-radius: 1px 1px 0 0; min-width: 2px;
+              transition: height .3s; opacity: .7; }
+
+  .tooltip { position: fixed; pointer-events: none; background: #1a1a22ee; color: var(--fg);
+             border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px;
+             font-size: .72rem; white-space: nowrap; display: none; z-index: 50;
+             line-height: 1.5; font-variant-numeric: tabular-nums; }
+  .tooltip b { color: var(--accent); }
+  .tooltip .hi { color: var(--hi); }
+
+  /* Mode buttons */
+  .mode-btns { display: flex; gap: 4px; }
+  .mode-btns button { font-size: .62rem; padding: 2px 8px; }
+
+  .step-controls { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+  .step-controls button { font-size: .68rem; padding: 2px 10px; background: var(--panel);
+    color: var(--fg); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+  .step-controls button:hover { border-color: var(--accent); }
+  .step-controls span { font-size: .65rem; color: var(--dim); }
+
+  @media (max-width: 900px) {
+    .main { flex-direction: column; }
+    .side-panel { width: 100%; max-height: 50vh; border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Hilbert Semiprime <span>▲</span> Overlay Comparator</h1>
+  <div class="sub">Overlay p×q triangles on a Hilbert curve — see where products cluster</div>
+</div>
+
+<div class="main">
+  <div class="canvas-col">
+    <div class="canvas-controls">
+      <label>Order
+        <select id="selOrder">
+          <option value="4">4 (256)</option>
+          <option value="5" selected>5 (1024)</option>
+          <option value="6">6 (4096)</option>
+          <option value="7">7 (16384)</option>
+        </select>
+      </label>
+      <div class="mode-btns">
+        <button id="btnAll" class="active" onclick="setMode('all')">All Overlays</button>
+        <button id="btnStep" onclick="setMode('step')">Step Through</button>
+        <button id="btnCumul" onclick="setMode('cumul')">Cumulative</button>
+      </div>
+      <label style="font-size:.6rem;color:var(--dim)">
+        <input type="checkbox" id="chkCurve" checked> Show Curve
+      </label>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="hilbert"></canvas>
+    </div>
+    <div class="step-controls" id="stepControls" style="justify-content:center;padding-bottom:6px;display:none">
+      <button onclick="stepPrev()">◀ Prev</button>
+      <span id="stepLabel">1 / 1</span>
+      <button onclick="stepNext()">Next ▶</button>
+      <button onclick="stepPlay()" id="btnPlay">▶ Play</button>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="sp-section">
+      <h3>Prime Ranges</h3>
+      <div class="prime-range">
+        <span>p :</span>
+        <select id="pMin"></select>
+        <span style="width:auto;text-align:center">to</span>
+        <select id="pMax"></select>
+      </div>
+      <div class="prime-range">
+        <span>q :</span>
+        <select id="qMin"></select>
+        <span style="width:auto;text-align:center">to</span>
+        <select id="qMax"></select>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <h3>Product Matrix (p × q)</h3>
+      <div class="matrix-wrap" id="matrixWrap"></div>
+    </div>
+
+    <div class="sp-section">
+      <h3>Statistics</h3>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div style="margin-top:8px">
+        <div style="font-size:.62rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em">Triangle Area Distribution</div>
+        <div class="distribution" id="distBars"></div>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:.62rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em">Hottest Curve Regions (overlay density)</div>
+        <canvas id="miniHeat" width="128" height="128" style="width:100%;max-width:200px;border-radius:4px;margin-top:4px;image-rendering:pixelated"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tip"></div>
+
+<script>
+// ─── Hilbert helpers ───
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+
+// ─── Globals ───
+let order = 5;
+let N;  // = 1 << (2*order)
+let sieveArr;
+let primes = [];
+let xyCache = [];
+const canvas = document.getElementById('hilbert');
+const ctx = canvas.getContext('2d');
+let mode = 'all'; // 'all' | 'step' | 'cumul'
+let stepIdx = 0;
+let playTimer = null;
+let pRange = [2, 13], qRange = [2, 13];
+let combos = []; // [{p, q, pq, tri}]
+let highlightCombo = null; // index into combos, or null
+let zoomTarget = null; // {x,y} to zoom to, or null
+let viewTx = 0, viewTy = 0, viewScale = 1;
+let canvasW = 600, canvasH = 600;
+let gridN; // = 1<<order
+
+// ─── Init ───
+function init() {
+  order = +document.getElementById('selOrder').value;
+  N = 1 << (2 * order);
+  gridN = 1 << order;
+  sieveArr = sieve(N);
+  primes = [];
+  for (let i = 2; i <= N; i++) if (sieveArr[i]) primes.push(i);
+
+  // Precompute all xy positions
+  xyCache = new Array(N);
+  for (let d = 0; d < N; d++) xyCache[d] = hilbertD2xy(order, d);
+
+  populatePrimeSelects();
+  rebuildCombos();
+}
+
+function populatePrimeSelects() {
+  const maxPrime = primes[primes.length - 1];
+  // Only primes whose product can fit
+  const usable = primes.filter(p => p * 2 < N); // at least p*2 < N
+  const opts = usable.map(p => `<option value="${p}">${p}</option>`).join('');
+  ['pMin','pMax','qMin','qMax'].forEach(id => {
+    document.getElementById(id).innerHTML = opts;
+  });
+  // Defaults
+  const def = usable.filter(p => p <= 13);
+  if (def.length >= 1) {
+    document.getElementById('pMin').value = def[0];
+    document.getElementById('pMax').value = def[def.length - 1];
+    document.getElementById('qMin').value = def[0];
+    document.getElementById('qMax').value = def[def.length - 1];
+  }
+  ['pMin','pMax','qMin','qMax'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => { rebuildCombos(); });
+  });
+}
+
+function getPrimeRange(minId, maxId) {
+  let lo = +document.getElementById(minId).value;
+  let hi = +document.getElementById(maxId).value;
+  if (lo > hi) { let t = lo; lo = hi; hi = t; }
+  return primes.filter(p => p >= lo && p <= hi);
+}
+
+function rebuildCombos() {
+  const ps = getPrimeRange('pMin', 'pMax');
+  const qs = getPrimeRange('qMin', 'qMax');
+  combos = [];
+  for (const p of ps) {
+    for (const q of qs) {
+      if (p > q) continue; // avoid duplicates, keep p <= q
+      const pq = p * q;
+      if (pq >= N) continue;
+      // Triangle vertices: position of p, position of q, position of p*q on curve
+      // We use d = value - 1 (0-indexed positions) OR d = value if value < N
+      // For Hilbert position, use the integer directly as index d
+      const xyP = xyCache[p];
+      const xyQ = xyCache[q];
+      const xyPQ = xyCache[pq];
+      // Triangle "area" via cross product
+      const ax = xyQ[0] - xyP[0], ay = xyQ[1] - xyP[1];
+      const bx = xyPQ[0] - xyP[0], by = xyPQ[1] - xyP[1];
+      const area = Math.abs(ax * by - ay * bx) / 2;
+      combos.push({ p, q, pq, xyP, xyQ, xyPQ, area });
+    }
+  }
+  stepIdx = 0;
+  highlightCombo = null;
+  buildMatrix(ps, qs);
+  computeStats();
+  draw();
+}
+
+// ─── Matrix ───
+function buildMatrix(ps, qs) {
+  const wrap = document.getElementById('matrixWrap');
+  if (ps.length === 0 || qs.length === 0) {
+    wrap.innerHTML = '<div style="font-size:.7rem;color:var(--dim);padding:8px">No primes selected</div>';
+    return;
+  }
+  // Build a lookup from (p,q) to combo index
+  const lookup = {};
+  combos.forEach((c, i) => { lookup[c.p + ',' + c.q] = i; lookup[c.q + ',' + c.p] = i; });
+
+  let html = '<table class="matrix"><tr><th class="corner">p\\q</th>';
+  for (const q of qs) html += `<th class="col-h">${q}</th>`;
+  html += '</tr>';
+  for (const p of ps) {
+    html += `<tr><th class="row-h">${p}</th>`;
+    for (const q of qs) {
+      const key = Math.min(p,q) + ',' + Math.max(p,q);
+      const idx = lookup[key];
+      const pq = p * q;
+      if (idx === undefined || pq >= N) {
+        html += `<td class="beyond">${pq >= N ? '—' : ''}</td>`;
+      } else {
+        const c = combos[idx];
+        // Color by area (normalize)
+        const maxArea = combos.reduce((m, cc) => Math.max(m, cc.area), 1);
+        const t = c.area / maxArea;
+        const r = Math.round(125 + 130 * t);
+        const g = Math.round(211 - 80 * t);
+        const b = Math.round(252 - 200 * t);
+        html += `<td data-idx="${idx}" style="background:rgba(${r},${g},${b},.18);color:rgb(${r},${g},${b})"
+                     onmouseenter="matHover(${idx})" onmouseleave="matLeave()"
+                     onclick="matClick(${idx})">${pq}</td>`;
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  wrap.innerHTML = html;
+}
+
+function matHover(idx) {
+  highlightCombo = idx;
+  draw();
+  // Show tooltip near the cell
+  const c = combos[idx];
+  const tip = document.getElementById('tip');
+  tip.innerHTML = `<b>${c.p}</b> × <b>${c.q}</b> = <span class="hi">${c.pq}</span><br>` +
+    `▲ area: ${c.area.toFixed(1)}<br>Positions: ${c.p}→(${c.xyP}), ${c.q}→(${c.xyQ}), ${c.pq}→(${c.xyPQ})`;
+  tip.style.display = 'block';
+  // Highlight cell
+  document.querySelectorAll('table.matrix td').forEach(td => td.classList.remove('highlighted'));
+  const cell = document.querySelector(`td[data-idx="${idx}"]`);
+  if (cell) cell.classList.add('highlighted');
+}
+
+function matLeave() {
+  highlightCombo = null;
+  document.getElementById('tip').style.display = 'none';
+  document.querySelectorAll('table.matrix td').forEach(td => td.classList.remove('highlighted'));
+  draw();
+}
+
+function matClick(idx) {
+  const c = combos[idx];
+  // Zoom to product position
+  const cell = gridN > 0 ? canvasW / gridN : 1;
+  const cx = (c.xyPQ[0] + 0.5) * cell;
+  const cy = (c.xyPQ[1] + 0.5) * cell;
+  zoomTarget = { cx, cy };
+  // Animate zoom
+  const targetScale = Math.min(6, Math.max(3, gridN / 8));
+  animateZoom(cx, cy, targetScale);
+}
+
+let animFrame = null;
+function animateZoom(cx, cy, targetScale) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const startScale = viewScale, startTx = viewTx, startTy = viewTy;
+  // Target: center on (cx, cy) with targetScale
+  const endTx = canvasW / 2 - cx * targetScale;
+  const endTy = canvasH / 2 - cy * targetScale;
+  const dur = 500;
+  const t0 = performance.now();
+  function tick(now) {
+    let t = Math.min(1, (now - t0) / dur);
+    t = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; // easeInOutCubic
+    viewScale = startScale + (targetScale - startScale) * t;
+    viewTx = startTx + (endTx - startTx) * t;
+    viewTy = startTy + (endTy - startTy) * t;
+    draw();
+    if (t < 1) animFrame = requestAnimationFrame(tick);
+  }
+  animFrame = requestAnimationFrame(tick);
+}
+
+function resetView() {
+  animateZoom(canvasW / 2, canvasH / 2, 1);
+}
+
+// ─── Stats ───
+function computeStats() {
+  const sg = document.getElementById('statsGrid');
+  if (combos.length === 0) {
+    sg.innerHTML = '<span class="stat-label">No triangles</span>';
+    document.getElementById('distBars').innerHTML = '';
+    return;
+  }
+  const areas = combos.map(c => c.area);
+  const avg = areas.reduce((a,b) => a+b, 0) / areas.length;
+  const maxA = Math.max(...areas);
+  const minA = Math.min(...areas);
+  const median = [...areas].sort((a,b) => a-b)[Math.floor(areas.length/2)];
+
+  // Most popular region: build heatmap
+  const heatSize = gridN;
+  const heat = new Float32Array(heatSize * heatSize);
+  for (const c of combos) {
+    // Increment cells for all three triangle vertices
+    heat[c.xyP[1] * heatSize + c.xyP[0]] += 0.5;
+    heat[c.xyQ[1] * heatSize + c.xyQ[0]] += 0.5;
+    heat[c.xyPQ[1] * heatSize + c.xyPQ[0]] += 1.0;
+  }
+  let hotMax = 0, hotX = 0, hotY = 0;
+  for (let i = 0; i < heat.length; i++) {
+    if (heat[i] > hotMax) { hotMax = heat[i]; hotX = i % heatSize; hotY = (i / heatSize) | 0; }
+  }
+
+  sg.innerHTML = `
+    <span class="stat-label">Triangles</span><span class="stat-value accent">${combos.length}</span>
+    <span class="stat-label">Avg area</span><span class="stat-value">${avg.toFixed(1)}</span>
+    <span class="stat-label">Median area</span><span class="stat-value">${median.toFixed(1)}</span>
+    <span class="stat-label">Min area</span><span class="stat-value">${minA.toFixed(1)}</span>
+    <span class="stat-label">Max area</span><span class="stat-value hi">${maxA.toFixed(1)}</span>
+    <span class="stat-label">Hottest cell</span><span class="stat-value hi">(${hotX},${hotY}) ×${hotMax.toFixed(0)}</span>
+  `;
+
+  // Distribution bars
+  const buckets = 20;
+  const bw = (maxA - minA) / buckets || 1;
+  const dist = new Array(buckets).fill(0);
+  for (const a of areas) {
+    const b = Math.min(buckets - 1, ((a - minA) / bw) | 0);
+    dist[b]++;
+  }
+  const dMax = Math.max(...dist, 1);
+  document.getElementById('distBars').innerHTML = dist.map(d =>
+    `<div class="dist-bar" style="height:${Math.max(1, d / dMax * 100)}%"></div>`
+  ).join('');
+
+  // Mini heatmap
+  drawMiniHeat(heat, heatSize, hotMax);
+}
+
+function drawMiniHeat(heat, size, hMax) {
+  const mc = document.getElementById('miniHeat');
+  mc.width = size; mc.height = size;
+  const mctx = mc.getContext('2d');
+  const id = mctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const v = heat[y * size + x];
+      const t = hMax > 0 ? v / hMax : 0;
+      const i = (y * size + x) * 4;
+      // Colormap: dark -> accent -> highlight
+      if (t < 0.5) {
+        const u = t * 2;
+        id.data[i]   = Math.round(14 + 111 * u);   // r: 14 -> 125
+        id.data[i+1] = Math.round(14 + 197 * u);   // g: 14 -> 211
+        id.data[i+2] = Math.round(18 + 234 * u);   // b: 18 -> 252
+      } else {
+        const u = (t - 0.5) * 2;
+        id.data[i]   = Math.round(125 + 125 * u);   // r: 125 -> 250
+        id.data[i+1] = Math.round(211 - 7 * u);     // g: 211 -> 204
+        id.data[i+2] = Math.round(252 - 231 * u);   // b: 252 -> 21
+      }
+      id.data[i+3] = t > 0 ? Math.round(80 + 175 * t) : 30;
+    }
+  }
+  mctx.putImageData(id, 0, 0);
+}
+
+// ─── Mode ───
+function setMode(m) {
+  mode = m;
+  ['btnAll','btnStep','btnCumul'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(m === 'all' ? 'btnAll' : m === 'step' ? 'btnStep' : 'btnCumul').classList.add('active');
+  document.getElementById('stepControls').style.display = (m === 'step' || m === 'cumul') ? 'flex' : 'none';
+  if (m === 'all') { if (playTimer) { clearInterval(playTimer); playTimer = null; } }
+  stepIdx = 0;
+  updateStepLabel();
+  draw();
+}
+
+function stepPrev() {
+  if (combos.length === 0) return;
+  stepIdx = (stepIdx - 1 + combos.length) % combos.length;
+  updateStepLabel(); draw();
+}
+function stepNext() {
+  if (combos.length === 0) return;
+  stepIdx = (stepIdx + 1) % combos.length;
+  updateStepLabel(); draw();
+}
+function stepPlay() {
+  if (playTimer) { clearInterval(playTimer); playTimer = null; document.getElementById('btnPlay').textContent = '▶ Play'; return; }
+  document.getElementById('btnPlay').textContent = '⏸ Pause';
+  playTimer = setInterval(() => {
+    stepIdx = (stepIdx + 1) % combos.length;
+    updateStepLabel(); draw();
+  }, 400);
+}
+function updateStepLabel() {
+  document.getElementById('stepLabel').textContent = combos.length ? `${stepIdx + 1} / ${combos.length}` : '—';
+}
+
+// ─── Drawing ───
+function sizeCanvas() {
+  const wrap = canvas.parentElement;
+  const sz = Math.min(wrap.clientWidth - 8, wrap.clientHeight - 8, 900);
+  canvasW = canvasH = Math.max(200, sz);
+  canvas.width = canvasW * devicePixelRatio;
+  canvas.height = canvasH * devicePixelRatio;
+  canvas.style.width = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+
+function draw() {
+  sizeCanvas();
+  ctx.save();
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  // Apply view transform
+  ctx.translate(viewTx, viewTy);
+  ctx.scale(viewScale, viewScale);
+
+  const cell = canvasW / gridN;
+
+  // Draw curve
+  if (document.getElementById('chkCurve').checked) {
+    ctx.beginPath();
+    for (let d = 0; d < N; d++) {
+      const [x, y] = xyCache[d];
+      const px = (x + 0.5) * cell;
+      const py = (y + 0.5) * cell;
+      if (d === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = 'rgba(138,138,150,0.12)';
+    ctx.lineWidth = Math.max(0.3, cell * 0.08);
+    ctx.stroke();
+  }
+
+  // Build heatmap for overlay intensity
+  const heatCanvas = document.createElement('canvas');
+  heatCanvas.width = canvasW;
+  heatCanvas.height = canvasH;
+  const hctx = heatCanvas.getContext('2d');
+
+  // Determine which combos to show
+  let visible = [];
+  if (highlightCombo !== null) {
+    visible = [highlightCombo];
+  } else if (mode === 'all') {
+    visible = combos.map((_, i) => i);
+  } else if (mode === 'step') {
+    visible = combos.length ? [stepIdx] : [];
+  } else if (mode === 'cumul') {
+    visible = combos.slice(0, stepIdx + 1).map((_, i) => i);
+  }
+
+  // Draw triangles with overlay
+  const alpha = highlightCombo !== null ? 0.6
+    : visible.length <= 1 ? 0.5
+    : Math.max(0.04, Math.min(0.35, 3 / visible.length));
+
+  for (const vi of visible) {
+    const c = combos[vi];
+    if (!c) continue;
+    const x1 = (c.xyP[0] + 0.5) * cell, y1 = (c.xyP[1] + 0.5) * cell;
+    const x2 = (c.xyQ[0] + 0.5) * cell, y2 = (c.xyQ[1] + 0.5) * cell;
+    const x3 = (c.xyPQ[0] + 0.5) * cell, y3 = (c.xyPQ[1] + 0.5) * cell;
+
+    // Fill triangle
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.closePath();
+    if (highlightCombo === vi) {
+      ctx.fillStyle = `rgba(250,204,21,${alpha})`;
+      ctx.strokeStyle = `rgba(250,204,21,0.9)`;
+    } else {
+      ctx.fillStyle = `rgba(125,211,252,${alpha})`;
+      ctx.strokeStyle = `rgba(125,211,252,${Math.min(0.6, alpha * 2)})`;
+    }
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.4, cell * 0.06);
+    ctx.stroke();
+  }
+
+  // Draw vertex dots for visible combos
+  const dotR = Math.max(1.5, cell * 0.18);
+  for (const vi of visible) {
+    const c = combos[vi];
+    if (!c) continue;
+    const isHl = highlightCombo === vi;
+    // P vertex (prime)
+    drawDot(ctx, (c.xyP[0]+.5)*cell, (c.xyP[1]+.5)*cell, dotR, isHl ? '#facc15' : '#7dd3fc', isHl ? 1 : .7);
+    // Q vertex (prime)
+    drawDot(ctx, (c.xyQ[0]+.5)*cell, (c.xyQ[1]+.5)*cell, dotR, isHl ? '#facc15' : '#7dd3fc', isHl ? 1 : .7);
+    // PQ vertex (product) — highlight color
+    drawDot(ctx, (c.xyPQ[0]+.5)*cell, (c.xyPQ[1]+.5)*cell, dotR * 1.3, isHl ? '#fff' : '#facc15', isHl ? 1 : .8);
+  }
+
+  // Labels for highlighted combo
+  if (highlightCombo !== null && combos[highlightCombo]) {
+    const c = combos[highlightCombo];
+    const fs = Math.max(9, cell * 0.6);
+    ctx.font = `bold ${fs}px system-ui`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(c.p, (c.xyP[0]+.5)*cell, (c.xyP[1]+.5)*cell - dotR - 2);
+    ctx.fillText(c.q, (c.xyQ[0]+.5)*cell, (c.xyQ[1]+.5)*cell - dotR - 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(c.pq, (c.xyPQ[0]+.5)*cell, (c.xyPQ[1]+.5)*cell - dotR * 1.3 - 2);
+  }
+
+  ctx.restore();
+
+  // Zoom reset hint
+  if (viewScale > 1.05) {
+    ctx.save();
+    ctx.font = '11px system-ui';
+    ctx.fillStyle = 'rgba(125,211,252,0.6)';
+    ctx.textAlign = 'right';
+    ctx.fillText('Dbl-click to reset zoom', canvasW - 8, 16);
+    ctx.restore();
+  }
+}
+
+function drawDot(ctx, x, y, r, color, alpha) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// ─── Pan & Zoom ───
+let dragging = false, dragX, dragY;
+canvas.addEventListener('mousedown', e => {
+  dragging = true;
+  dragX = e.clientX; dragY = e.clientY;
+});
+window.addEventListener('mousemove', e => {
+  // Tooltip tracking
+  const tip = document.getElementById('tip');
+  if (tip.style.display === 'block') {
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top = (e.clientY - 10) + 'px';
+  }
+  if (!dragging) return;
+  viewTx += e.clientX - dragX;
+  viewTy += e.clientY - dragY;
+  dragX = e.clientX; dragY = e.clientY;
+  draw();
+});
+window.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const zoom = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const newScale = Math.max(0.5, Math.min(20, viewScale * zoom));
+  const ratio = newScale / viewScale;
+  viewTx = mx - ratio * (mx - viewTx);
+  viewTy = my - ratio * (my - viewTy);
+  viewScale = newScale;
+  draw();
+}, { passive: false });
+canvas.addEventListener('dblclick', () => {
+  resetView();
+});
+
+// Canvas hover: find nearest triangle vertex
+canvas.addEventListener('mousemove', e => {
+  if (dragging) return;
+  if (highlightCombo !== null) return; // matrix hover takes priority
+  // Could add hover detection here in future
+});
+
+// ─── Order change ───
+document.getElementById('selOrder').addEventListener('change', () => {
+  viewScale = 1; viewTx = 0; viewTy = 0;
+  init();
+});
+document.getElementById('chkCurve').addEventListener('change', draw);
+
+// ─── Resize ───
+window.addEventListener('resize', draw);
+
+// ─── Boot ───
+init();
+</script>
+</body>
+</html>
