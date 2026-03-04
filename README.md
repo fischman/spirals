@@ -1,1 +1,1 @@
-# [Spirals!](https://fischman.github.io/spirals/#sacks,primes,1157)
+# [Spirals!](https://fischman.github.io/spirals)
