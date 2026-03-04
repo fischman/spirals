@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proto 5 — Zoom-to-Corner Deep Dive with Path Decomposition</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:#0e0e12;color:#c8ccd0;font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:13px;display:flex;flex-direction:column;position:fixed;top:0;left:0;right:0;bottom:0}
+head,head *{display:none!important}
+
+/* Header */
+header{display:flex;align-items:center;gap:14px;padding:8px 16px;background:#15151b;border-bottom:1px solid #23232d;flex-shrink:0;flex-wrap:wrap}
+header h1{font-size:14px;color:#7dd3fc;font-weight:600;white-space:nowrap}
+header label{color:#888;font-size:12px;white-space:nowrap}
+header select,header input[type=number]{background:#1a1a24;border:1px solid #33334a;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-family:inherit;font-size:12px;width:64px}
+header select{width:auto}
+header button{background:#2a2a3a;border:1px solid #44446a;color:#7dd3fc;padding:4px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;transition:background .15s}
+header button:hover{background:#33335a}
+header button.active{background:#7dd3fc;color:#0e0e12;border-color:#7dd3fc}
+.sep{width:1px;height:22px;background:#33334a}
+
+/* Main layout */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Side panel */
+.side{width:280px;min-width:280px;background:#121218;border-right:1px solid #23232d;display:flex;flex-direction:column;overflow:hidden}
+.side h2{font-size:12px;color:#7dd3fc;padding:10px 12px 6px;text-transform:uppercase;letter-spacing:.08em;flex-shrink:0}
+.side-section{padding:4px 12px 10px;border-bottom:1px solid #1e1e28;flex-shrink:0}
+.zoom-path-box{flex:1;overflow-y:auto;padding:8px 12px}
+.zoom-step{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:4px;background:#1a1a24;border:1px solid transparent;transition:all .25s;cursor:pointer}
+.zoom-step.active{border-color:#7dd3fc;background:#1a1a30}
+.zoom-step.visited{border-color:#33334a;background:#18182a}
+.zoom-step .level{color:#555;font-size:11px;width:18px;text-align:right;flex-shrink:0}
+.zoom-step .quad-label{color:#facc15;font-weight:600;font-size:13px;flex-shrink:0}
+.zoom-step .detail{color:#777;font-size:11px;margin-left:auto;white-space:nowrap}
+.zoom-arrow{color:#444;text-align:center;font-size:10px;margin:0 0 4px 12px}
+.legend-item{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11px}
+.legend-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+
+/* Canvas area */
+.canvas-wrap{flex:1;display:flex;position:relative;overflow:hidden}
+.canvas-panel{flex:1;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.canvas-panel canvas{flex:1}
+.canvas-label{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(14,14,18,.85);border:1px solid #33334a;border-radius:4px;padding:3px 10px;font-size:11px;color:#aaa;white-space:nowrap;pointer-events:none;z-index:2}
+.canvas-divider{width:1px;background:#33334a;flex-shrink:0}
+
+/* Info bar */
+.info-bar{height:28px;background:#15151b;border-top:1px solid #23232d;display:flex;align-items:center;padding:0 16px;font-size:11px;color:#666;gap:16px;flex-shrink:0}
+.info-bar span.val{color:#7dd3fc}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2a2a3a;border-radius:3px}
+script{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ Hilbert Zoom Decomposition</h1>
+  <div class="sep"></div>
+  <label>p₁ <input type="number" id="p1" min="2" value="7"></label>
+  <label>q₁ <input type="number" id="q1" min="2" value="13"></label>
+  <label style="color:#facc15">= <span id="prod1">91</span></label>
+  <div class="sep"></div>
+  <button id="btnCompare" title="Toggle comparison mode">Compare</button>
+  <label id="cmpControls" style="display:none">p₂ <input type="number" id="p2" min="2" value="5"></label>
+  <label id="cmpControls2" style="display:none">q₂ <input type="number" id="q2" min="2" value="11"></label>
+  <label id="cmpProd" style="display:none;color:#34d399">= <span id="prod2">55</span></label>
+  <div class="sep"></div>
+  <button id="btnAnimate">▶ Animate Zoom</button>
+  <button id="btnReset">Reset</button>
+</header>
+
+<div class="main">
+  <div class="side">
+    <h2>Semiprime A</h2>
+    <div class="side-section" id="infoA"></div>
+    <h2>Quadrant Zoom Path (A)</h2>
+    <div class="zoom-path-box" id="pathA"></div>
+    <div id="sideBwrap" style="display:none">
+      <h2 style="color:#34d399">Semiprime B</h2>
+      <div class="side-section" id="infoB"></div>
+      <h2 style="color:#34d399">Quadrant Zoom Path (B)</h2>
+      <div class="zoom-path-box" id="pathB"></div>
+    </div>
+    <h2>Legend</h2>
+    <div class="side-section" id="legendBox"></div>
+  </div>
+
+  <div class="canvas-wrap">
+    <div class="canvas-panel" id="panelA">
+      <div class="canvas-label" id="labelA">Semiprime A</div>
+      <canvas id="cvA"></canvas>
+    </div>
+    <div class="canvas-divider" id="divider" style="display:none"></div>
+    <div class="canvas-panel" id="panelB" style="display:none">
+      <div class="canvas-label" id="labelB" style="display:none">Semiprime B</div>
+      <canvas id="cvB"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="info-bar">
+  <span>Order: <span class="val" id="iOrd">—</span></span>
+  <span>Grid: <span class="val" id="iGrid">—</span></span>
+  <span>Zoom Level: <span class="val" id="iZoom">—</span></span>
+  <span>Cells visible: <span class="val" id="iCells">—</span></span>
+</div>
+
+<script>
+// ===== Core Hilbert =====
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+
+// ===== Quadrant decomposition =====
+// Returns array of {quadrant: 0-3, label: "NW"/"NE"/"SW"/"SE", range} from top level down
+function decomposeQuadrants(order, d) {
+  const steps = [];
+  const labels = ['SW','NW','SE','NE']; // Hilbert quadrant order at level 0
+  // We need to extract each pair of bits from d, but the Hilbert curve's
+  // orientation rotates at each level. Let's compute it differently:
+  // At each level, figure out which quadrant the point is in by checking coordinates.
+  const [tx, ty] = hilbertD2xy(order, d);
+  const N = 1 << order;
+  let cx = 0, cy = 0; // current sub-region origin
+  let size = N;
+
+  for (let lvl = 0; lvl < order; lvl++) {
+    size = size >> 1;
+    const inRight = tx >= cx + size ? 1 : 0;
+    const inTop = ty >= cy + size ? 1 : 0;
+    let qLabel;
+    if (!inRight && !inTop) qLabel = 'SW';
+    else if (!inRight && inTop) qLabel = 'NW';
+    else if (inRight && !inTop) qLabel = 'SE';
+    else qLabel = 'NE';
+    const rangeStart = cx + ',' + cy;
+    steps.push({
+      level: lvl + 1,
+      quadrant: qLabel,
+      ox: cx + inRight * size,
+      oy: cy + inTop * size,
+      size: size,
+      fullSize: N
+    });
+    cx += inRight * size;
+    cy += inTop * size;
+  }
+  return steps;
+}
+
+// Quadrant colors
+const QUAD_COLORS = {
+  'SW': '#f472b6', // pink
+  'NW': '#7dd3fc', // sky
+  'SE': '#facc15', // yellow
+  'NE': '#34d399'  // green
+};
+
+// ===== Minimum order =====
+function minOrder(val) {
+  let o = 1;
+  while ((1 << (2 * o)) <= val) o++;
+  return o;
+}
+
+// ===== State =====
+let primeFlags = null;
+let compare = false;
+let animating = false;
+let animTimer = null;
+
+const stateA = { p: 7, q: 13, order: 0, steps: [], zoomLevel: -1 };
+const stateB = { p: 5, q: 11, order: 0, steps: [], zoomLevel: -1 };
+
+function computeState(st) {
+  st.prod = st.p * st.q;
+  st.order = Math.max(minOrder(st.prod), 3);
+  if (st.order > 9) st.order = 9; // cap for performance
+  st.N = 1 << st.order;
+  st.total = st.N * st.N;
+  // Ensure prime sieve covers
+  if (!primeFlags || primeFlags.length <= st.prod) {
+    primeFlags = sieve(Math.max(st.prod + 100, 1000));
+  }
+  st.pPos = hilbertD2xy(st.order, Math.min(st.p, st.total - 1));
+  st.qPos = hilbertD2xy(st.order, Math.min(st.q, st.total - 1));
+  st.prodPos = hilbertD2xy(st.order, Math.min(st.prod, st.total - 1));
+  st.steps = decomposeQuadrants(st.order, Math.min(st.prod, st.total - 1));
+}
+
+// ===== Drawing =====
+function drawScene(canvas, st, suffix) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0e0e12';
+  ctx.fillRect(0, 0, W, H);
+
+  const order = st.order;
+  const N = st.N;
+  const total = N * N;
+
+  // Determine view bounds based on zoom level
+  let vx = 0, vy = 0, vSize = N;
+  if (st.zoomLevel >= 0 && st.zoomLevel < st.steps.length) {
+    const step = st.steps[st.zoomLevel];
+    vx = step.ox;
+    vy = step.oy;
+    vSize = step.size;
+  }
+
+  const margin = 40;
+  const drawSize = Math.min(W, H) - margin * 2;
+  const cellSize = drawSize / vSize;
+  const offsetX = (W - drawSize) / 2;
+  const offsetY = (H - drawSize) / 2;
+
+  function toScreen(gx, gy) {
+    const sx = offsetX + (gx - vx) * cellSize + cellSize / 2;
+    const sy = offsetY + (vSize - 1 - (gy - vy)) * cellSize + cellSize / 2;
+    return [sx, sy];
+  }
+
+  function inView(gx, gy) {
+    return gx >= vx && gx < vx + vSize && gy >= vy && gy < vy + vSize;
+  }
+
+  // Draw grid
+  ctx.strokeStyle = '#1a1a28';
+  ctx.lineWidth = 0.5;
+  if (cellSize > 3) {
+    for (let i = 0; i <= vSize; i++) {
+      const x = offsetX + i * cellSize;
+      const y = offsetY + i * cellSize;
+      ctx.beginPath(); ctx.moveTo(x, offsetY); ctx.lineTo(x, offsetY + drawSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(offsetX, y); ctx.lineTo(offsetX + drawSize, y); ctx.stroke();
+    }
+  }
+
+  // Draw quadrant boundaries at each level with color coding
+  function drawQuadrantOverlay() {
+    const maxLvl = st.zoomLevel >= 0 ? st.zoomLevel : -1;
+    // Show sub-quadrant boundaries of current view
+    if (vSize >= 2) {
+      const half = vSize / 2;
+      // Color the four quadrants of current view
+      const alpha = 0.06;
+      const quads = [
+        { ox: vx, oy: vy, label: 'SW' },
+        { ox: vx, oy: vy + half, label: 'NW' },
+        { ox: vx + half, oy: vy, label: 'SE' },
+        { ox: vx + half, oy: vy + half, label: 'NE' }
+      ];
+      quads.forEach(q => {
+        const [sx, sy] = toScreen(q.ox, q.oy + half - 1);
+        const col = QUAD_COLORS[q.label];
+        ctx.fillStyle = col + '18';
+        ctx.fillRect(sx - cellSize / 2, sy - cellSize / 2, half * cellSize, half * cellSize);
+        // Label
+        if (cellSize * half > 30) {
+          ctx.fillStyle = col + '55';
+          ctx.font = `${Math.min(14, cellSize * half * 0.15)}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(q.label, sx - cellSize / 2 + half * cellSize / 2, sy - cellSize / 2 + half * cellSize / 2);
+        }
+      });
+      // Divider lines
+      ctx.strokeStyle = '#ffffff20';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      const midX = offsetX + drawSize / 2;
+      const midY = offsetY + drawSize / 2;
+      ctx.beginPath(); ctx.moveTo(midX, offsetY); ctx.lineTo(midX, offsetY + drawSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(offsetX, midY); ctx.lineTo(offsetX + drawSize, midY); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  drawQuadrantOverlay();
+
+  // Draw Hilbert curve with quadrant coloring
+  if (cellSize >= 1.5) {
+    ctx.lineWidth = Math.max(1, Math.min(3, cellSize * 0.2));
+    ctx.lineCap = 'round';
+    let prevPt = null;
+    for (let d = 0; d < total; d++) {
+      const [gx, gy] = hilbertD2xy(order, d);
+      if (!inView(gx, gy)) { prevPt = null; continue; }
+      const [sx, sy] = toScreen(gx, gy);
+      if (prevPt) {
+        // Color by which quadrant of current view
+        const half = vSize / 2;
+        const inRight = gx >= vx + half ? 1 : 0;
+        const inTop = gy >= vy + half ? 1 : 0;
+        let ql;
+        if (!inRight && !inTop) ql = 'SW';
+        else if (!inRight && inTop) ql = 'NW';
+        else if (inRight && !inTop) ql = 'SE';
+        else ql = 'NE';
+        ctx.strokeStyle = QUAD_COLORS[ql] + '55';
+        ctx.beginPath();
+        ctx.moveTo(prevPt[0], prevPt[1]);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+      }
+      prevPt = [sx, sy];
+    }
+  }
+
+  // Draw "fuse" path from p to product along the curve
+  const pD = Math.min(st.p, total - 1);
+  const qD = Math.min(st.q, total - 1);
+  const prodD = Math.min(st.prod, total - 1);
+  // Highlight segments of the curve from max(p,q) to prod
+  const fuseStart = Math.max(pD, qD);
+  const fuseEnd = prodD;
+  if (fuseStart < fuseEnd && cellSize >= 1.5) {
+    ctx.lineWidth = Math.max(2, cellSize * 0.3);
+    ctx.lineCap = 'round';
+    let prevFuse = null;
+    for (let d = fuseStart; d <= fuseEnd; d++) {
+      const [gx, gy] = hilbertD2xy(order, d);
+      if (!inView(gx, gy)) { prevFuse = null; continue; }
+      const [sx, sy] = toScreen(gx, gy);
+      if (prevFuse) {
+        const t = (d - fuseStart) / (fuseEnd - fuseStart);
+        ctx.strokeStyle = `rgba(250,204,21,${0.2 + 0.4 * t})`;
+        ctx.beginPath();
+        ctx.moveTo(prevFuse[0], prevFuse[1]);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+      }
+      prevFuse = [sx, sy];
+    }
+  }
+
+  // Prime cells (small dots)
+  if (cellSize >= 4) {
+    for (let d = 2; d < Math.min(total, primeFlags.length); d++) {
+      if (!primeFlags[d]) continue;
+      const [gx, gy] = hilbertD2xy(order, d);
+      if (!inView(gx, gy)) continue;
+      const [sx, sy] = toScreen(gx, gy);
+      ctx.fillStyle = '#7dd3fc30';
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(1.5, cellSize * 0.15), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Triangle: p, q, p*q
+  const pPt = toScreen(...st.pPos);
+  const qPt = toScreen(...st.qPos);
+  const prodPt = toScreen(...st.prodPos);
+
+  function clampToEdge(sx, sy) {
+    const pad = 20;
+    let cx = Math.max(pad, Math.min(W - pad, sx));
+    let cy = Math.max(pad, Math.min(H - pad, sy));
+    const isOff = sx < pad || sx > W - pad || sy < pad || sy > H - pad;
+    return { x: cx, y: cy, offscreen: isOff };
+  }
+
+  const pC = clampToEdge(...pPt);
+  const qC = clampToEdge(...qPt);
+  const prodC = clampToEdge(...prodPt);
+
+  // Triangle fill
+  ctx.fillStyle = 'rgba(250,204,21,0.05)';
+  ctx.beginPath();
+  ctx.moveTo(pC.x, pC.y); ctx.lineTo(qC.x, qC.y); ctx.lineTo(prodC.x, prodC.y);
+  ctx.closePath(); ctx.fill();
+
+  // Triangle edges
+  ctx.strokeStyle = '#facc1555';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pC.x, pC.y); ctx.lineTo(qC.x, qC.y); ctx.lineTo(prodC.x, prodC.y); ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw vertices
+  function drawVertex(pt, c, label, color, radius) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#0e0e12';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Off-screen arrow
+    if (c.offscreen) {
+      const angle = Math.atan2(pt[1] - c.y, pt[0] - c.x);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = color + 'aa';
+      ctx.beginPath();
+      ctx.moveTo(radius + 8, 0);
+      ctx.lineTo(radius + 2, -4);
+      ctx.lineTo(radius + 2, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // Label
+    ctx.fillStyle = color;
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, c.x, c.y - radius - 4);
+  }
+
+  drawVertex(pPt, pC, `p=${st.p}`, '#7dd3fc', Math.max(5, Math.min(10, cellSize * 0.35)));
+  drawVertex(qPt, qC, `q=${st.q}`, '#7dd3fc', Math.max(5, Math.min(10, cellSize * 0.35)));
+  drawVertex(prodPt, prodC, `${st.p}×${st.q}=${st.prod}`, '#facc15', Math.max(6, Math.min(12, cellSize * 0.45)));
+
+  // Current zoom highlight box (if not fully zoomed)
+  if (st.zoomLevel >= 0 && st.zoomLevel < st.steps.length - 1) {
+    const nextStep = st.steps[st.zoomLevel + 1 <= st.steps.length - 1 ? st.zoomLevel + 1 : st.zoomLevel];
+    // Highlight next zoom target
+    if (st.zoomLevel + 1 < st.steps.length) {
+      const ns = st.steps[st.zoomLevel + 1];
+      const [bx, by] = toScreen(ns.ox, ns.oy + ns.size - 1);
+      const bw = ns.size * cellSize;
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(bx - cellSize / 2, by - cellSize / 2, bw, bw);
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Update info bar
+  document.getElementById('iOrd').textContent = order;
+  document.getElementById('iGrid').textContent = `${N}×${N}`;
+  document.getElementById('iZoom').textContent = st.zoomLevel < 0 ? 'Full' : `${st.zoomLevel + 1}/${st.steps.length}`;
+  document.getElementById('iCells').textContent = `${vSize}×${vSize} = ${vSize * vSize}`;
+}
+
+// ===== Side panel =====
+function renderSideInfo(st, elId) {
+  const el = document.getElementById(elId);
+  const isPP = primeFlags && primeFlags[st.p];
+  const isQP = primeFlags && primeFlags[st.q];
+  el.innerHTML = `
+    <div style="font-size:11px;line-height:1.7">
+      <span style="color:${isPP ? '#7dd3fc' : '#f87171'}">p = ${st.p} ${isPP ? '✓prime' : '✗not prime'}</span><br>
+      <span style="color:${isQP ? '#7dd3fc' : '#f87171'}">q = ${st.q} ${isQP ? '✓prime' : '✗not prime'}</span><br>
+      <span style="color:#facc15">p×q = ${st.prod}</span> &nbsp;
+      <span style="color:#666">Hilbert d=${st.prod}</span><br>
+      <span style="color:#666">Order ${st.order} (${st.N}×${st.N} = ${st.N * st.N} cells)</span><br>
+      <span style="color:#666">Position: (${st.prodPos[0]}, ${st.prodPos[1]})</span>
+    </div>
+  `;
+}
+
+function renderZoomPath(st, elId) {
+  const el = document.getElementById(elId);
+  let html = '';
+  // Full view step
+  const fullActive = st.zoomLevel < 0;
+  html += `<div class="zoom-step ${fullActive ? 'active' : 'visited'}" data-level="-1">
+    <span class="level">0</span>
+    <span class="quad-label" style="color:#aaa">FULL</span>
+    <span class="detail">${st.N}×${st.N} view</span>
+  </div>`;
+
+  st.steps.forEach((step, i) => {
+    const isActive = st.zoomLevel === i;
+    const isVisited = st.zoomLevel > i;
+    html += `<div class="zoom-arrow">↓ ${step.quadrant}</div>`;
+    html += `<div class="zoom-step ${isActive ? 'active' : (isVisited ? 'visited' : '')}" data-level="${i}">
+      <span class="level">${i + 1}</span>
+      <span class="quad-label" style="color:${QUAD_COLORS[step.quadrant]}">${step.quadrant}</span>
+      <span class="detail">${step.size}×${step.size} @ (${step.ox},${step.oy})</span>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+
+  // Click handlers
+  el.querySelectorAll('.zoom-step').forEach(div => {
+    div.addEventListener('click', () => {
+      const lvl = parseInt(div.dataset.level);
+      st.zoomLevel = lvl;
+      refresh();
+    });
+  });
+}
+
+function renderLegend() {
+  const el = document.getElementById('legendBox');
+  let html = '';
+  for (const [label, color] of Object.entries(QUAD_COLORS)) {
+    html += `<div class="legend-item"><div class="legend-swatch" style="background:${color}"></div>${label} quadrant</div>`;
+  }
+  html += `<div class="legend-item"><div class="legend-swatch" style="background:#7dd3fc"></div>Prime factors</div>`;
+  html += `<div class="legend-item"><div class="legend-swatch" style="background:#facc15"></div>Product (semiprime)</div>`;
+  html += `<div class="legend-item" style="margin-top:4px;color:#666"><div class="legend-swatch" style="background:linear-gradient(90deg,#facc1533,#facc15)"></div>Fuse path</div>`;
+  el.innerHTML = html;
+}
+
+// ===== Resize =====
+function resizeCanvas(canvas) {
+  const parent = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = parent.clientWidth * dpr;
+  canvas.height = parent.clientHeight * dpr;
+  canvas.style.width = parent.clientWidth + 'px';
+  canvas.style.height = parent.clientHeight + 'px';
+  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function refresh() {
+  computeState(stateA);
+  resizeCanvas(document.getElementById('cvA'));
+  drawScene(document.getElementById('cvA'), stateA, 'A');
+  renderSideInfo(stateA, 'infoA');
+  renderZoomPath(stateA, 'pathA');
+
+  document.getElementById('prod1').textContent = stateA.prod;
+
+  if (compare) {
+    computeState(stateB);
+    resizeCanvas(document.getElementById('cvB'));
+    drawScene(document.getElementById('cvB'), stateB, 'B');
+    renderSideInfo(stateB, 'infoB');
+    renderZoomPath(stateB, 'pathB');
+    document.getElementById('prod2').textContent = stateB.prod;
+  }
+
+  renderLegend();
+}
+
+// ===== Animation =====
+function animateZoom(st) {
+  if (animating) { stopAnimation(); return; }
+  animating = true;
+  document.getElementById('btnAnimate').textContent = '⏸ Pause';
+  st.zoomLevel = -1;
+  refresh();
+  let step = -1;
+  animTimer = setInterval(() => {
+    step++;
+    if (step >= st.steps.length) {
+      stopAnimation();
+      return;
+    }
+    st.zoomLevel = step;
+    refresh();
+  }, 900);
+}
+
+function stopAnimation() {
+  animating = false;
+  clearInterval(animTimer);
+  document.getElementById('btnAnimate').textContent = '▶ Animate Zoom';
+}
+
+// ===== Events =====
+document.getElementById('p1').addEventListener('input', e => { stateA.p = Math.max(2, +e.target.value || 2); stateA.zoomLevel = -1; refresh(); });
+document.getElementById('q1').addEventListener('input', e => { stateA.q = Math.max(2, +e.target.value || 2); stateA.zoomLevel = -1; refresh(); });
+document.getElementById('p2').addEventListener('input', e => { stateB.p = Math.max(2, +e.target.value || 2); stateB.zoomLevel = -1; refresh(); });
+document.getElementById('q2').addEventListener('input', e => { stateB.q = Math.max(2, +e.target.value || 2); stateB.zoomLevel = -1; refresh(); });
+
+document.getElementById('btnCompare').addEventListener('click', () => {
+  compare = !compare;
+  document.getElementById('btnCompare').classList.toggle('active', compare);
+  document.getElementById('cmpControls').style.display = compare ? '' : 'none';
+  document.getElementById('cmpControls2').style.display = compare ? '' : 'none';
+  document.getElementById('cmpProd').style.display = compare ? '' : 'none';
+  document.getElementById('panelB').style.display = compare ? '' : 'none';
+  document.getElementById('divider').style.display = compare ? '' : 'none';
+  document.getElementById('labelB').style.display = compare ? '' : 'none';
+  document.getElementById('sideBwrap').style.display = compare ? '' : 'none';
+  setTimeout(refresh, 50);
+});
+
+document.getElementById('btnAnimate').addEventListener('click', () => {
+  animateZoom(stateA);
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  stopAnimation();
+  stateA.zoomLevel = -1;
+  stateB.zoomLevel = -1;
+  refresh();
+});
+
+window.addEventListener('resize', () => refresh());
+
+// Init
+primeFlags = sieve(10000);
+refresh();
+</script>
+</body>
+</html>
