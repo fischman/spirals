@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hilbert Semiprime Triangles – Grid Comparison</title>
+<style>
+  head, script { display: none !important; }
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15;
+          --panel: #16161e; --border: #2a2a35; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Inter', system-ui, sans-serif;
+         display: flex; flex-direction: column; }
+
+  .header { text-align: center; padding: 0.6rem 0 0.25rem; flex-shrink: 0; }
+  .header h1 { font-size: 1.2rem; color: var(--accent); letter-spacing: 0.04em; }
+  .header .sub { font-size: 0.72rem; color: var(--dim); margin-top: 0.1rem; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; justify-content: center;
+              padding: 0.35rem 1rem; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+  .controls label { font-size: 0.65rem; color: var(--dim); display: flex; flex-direction: column;
+                    align-items: center; gap: 0.15rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  select, input[type=number] { background: #1a1a22; color: var(--fg); border: 1px solid var(--dim);
+           border-radius: 5px; padding: 0.25rem 0.4rem; font-size: 0.78rem; min-width: 70px; }
+  select:focus, input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .main { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+
+  /* Left: grid of thumbnails */
+  .grid-panel { flex: 1 1 55%; display: flex; flex-direction: column; min-width: 0;
+                border-right: 1px solid var(--border); }
+  .grid-header { font-size: 0.7rem; color: var(--dim); padding: 0.4rem 0.7rem; flex-shrink: 0;
+                 border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .grid-scroll { flex: 1; overflow-y: auto; padding: 0.5rem; }
+  .grid-scroll::-webkit-scrollbar { width: 6px; }
+  .grid-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; }
+  .thumb { background: var(--panel); border: 2px solid transparent; border-radius: 6px;
+           cursor: pointer; padding: 0.3rem; transition: border-color 0.15s, transform 0.1s;
+           display: flex; flex-direction: column; align-items: center; }
+  .thumb:hover { border-color: var(--accent); transform: scale(1.03); }
+  .thumb.selected { border-color: var(--hi); }
+  .thumb canvas { width: 100%; aspect-ratio: 1; border-radius: 3px; }
+  .thumb .lbl { font-size: 0.6rem; color: var(--dim); margin-top: 0.2rem; text-align: center;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+  .thumb .lbl b { color: var(--fg); font-weight: 600; }
+
+  /* Right: detail panel */
+  .detail-panel { flex: 0 0 380px; display: flex; flex-direction: column; min-width: 300px;
+                  background: var(--panel); }
+  .detail-header { font-size: 0.75rem; color: var(--accent); padding: 0.5rem 0.7rem;
+                   border-bottom: 1px solid var(--border); font-weight: 600; }
+  .detail-canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center;
+                        padding: 0.5rem; min-height: 0; position: relative; }
+  .detail-canvas-wrap canvas { max-width: 100%; max-height: 100%; border-radius: 4px; }
+  .detail-stats { flex-shrink: 0; padding: 0.5rem 0.7rem; border-top: 1px solid var(--border);
+                  font-size: 0.72rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1rem; }
+  .detail-stats .stat-label { color: var(--dim); }
+  .detail-stats .stat-value { color: var(--fg); font-weight: 600; text-align: right; }
+  .detail-stats .stat-value.prime { color: var(--accent); }
+  .detail-stats .stat-value.product { color: var(--hi); }
+  .empty-detail { color: var(--dim); font-size: 0.8rem; text-align: center; padding: 2rem; }
+
+  .legend-bar { display: flex; align-items: center; gap: 0.4rem; }
+  .legend-gradient { width: 80px; height: 8px; border-radius: 2px; }
+  .legend-bar span { font-size: 0.6rem; color: var(--dim); }
+
+  @media (max-width: 780px) {
+    .main { flex-direction: column; }
+    .grid-panel { border-right: none; border-bottom: 1px solid var(--border); flex: 1 1 50%; }
+    .detail-panel { flex: 1 1 50%; min-width: unset; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>▲ Semiprime Triangle Grid</h1>
+  <div class="sub">Compare Hilbert-curve triangles formed by p, q, and p×q across many factor pairs</div>
+</div>
+
+<div class="controls">
+  <label>Hilbert Order
+    <select id="ctrlOrder">
+      <option value="3">3 (8×8)</option>
+      <option value="4" selected>4 (16×16)</option>
+      <option value="5">5 (32×32)</option>
+      <option value="6">6 (64×64)</option>
+      <option value="7">7 (128×128)</option>
+    </select>
+  </label>
+  <label>Mode
+    <select id="ctrlMode">
+      <option value="fixP">Fix p, vary q</option>
+      <option value="fixQ">Fix q, vary p</option>
+      <option value="all">All semiprimes</option>
+    </select>
+  </label>
+  <label>Fixed Prime
+    <select id="ctrlFixed"></select>
+  </label>
+  <label>Sort By
+    <select id="ctrlSort">
+      <option value="product">Product (p×q)</option>
+      <option value="area">Triangle Area</option>
+      <option value="q">Second Factor</option>
+      <option value="perimeter">Perimeter</option>
+    </select>
+  </label>
+  <label>Grid Size
+    <select id="ctrlGrid">
+      <option value="16">4×4</option>
+      <option value="25" selected>5×5</option>
+      <option value="36">6×6</option>
+      <option value="49">7×7</option>
+    </select>
+  </label>
+</div>
+
+<div class="main">
+  <div class="grid-panel">
+    <div class="grid-header">
+      <span id="gridInfo">Loading…</span>
+      <div class="legend-bar">
+        <span>small △</span>
+        <canvas id="legendCanvas" class="legend-gradient" width="80" height="8"></canvas>
+        <span>large △</span>
+      </div>
+    </div>
+    <div class="grid-scroll">
+      <div class="grid" id="gridContainer"></div>
+    </div>
+  </div>
+  <div class="detail-panel">
+    <div class="detail-header" id="detailTitle">Detail View</div>
+    <div class="detail-canvas-wrap">
+      <canvas id="detailCanvas" width="600" height="600"></canvas>
+      <div class="empty-detail" id="emptyMsg">Click a thumbnail to inspect</div>
+    </div>
+    <div class="detail-stats" id="detailStats"></div>
+  </div>
+</div>
+
+<script>
+/* ── Hilbert helpers ── */
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx;
+    y += s * ry;
+    d >>>= 2;
+  }
+  return [x, y];
+}
+
+function sieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+
+/* ── Precompute ── */
+let primeFlags, primes, N, order;
+
+function init() {
+  order = +document.getElementById('ctrlOrder').value;
+  N = 1 << (2 * order);
+  primeFlags = sieve(N);
+  primes = [];
+  for (let i = 2; i < N; i++) if (primeFlags[i]) primes.push(i);
+  populateFixedPrime();
+  buildGrid();
+}
+
+function populateFixedPrime() {
+  const sel = document.getElementById('ctrlFixed');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const usable = primes.filter(p => p * 2 < N);
+  for (const p of usable.slice(0, 80)) {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  }
+  if (prev && usable.includes(+prev)) sel.value = prev;
+}
+
+/* ── Generate semiprimes ── */
+function getSemiprimes() {
+  const mode = document.getElementById('ctrlMode').value;
+  const fixed = +document.getElementById('ctrlFixed').value;
+  const maxCount = +document.getElementById('ctrlGrid').value;
+  const results = [];
+
+  if (mode === 'fixP') {
+    for (const q of primes) {
+      const prod = fixed * q;
+      if (prod >= N) break;
+      if (q === fixed) continue;  // allow but skip only if we want distinct
+      results.push({ p: fixed, q, prod });
+    }
+  } else if (mode === 'fixQ') {
+    for (const p of primes) {
+      const prod = p * fixed;
+      if (prod >= N) break;
+      if (p === fixed) continue;
+      results.push({ p, q: fixed, prod });
+    }
+  } else {
+    // all semiprimes
+    for (let i = 0; i < primes.length; i++) {
+      for (let j = i; j < primes.length; j++) {
+        const prod = primes[i] * primes[j];
+        if (prod >= N) break;
+        results.push({ p: primes[i], q: primes[j], prod });
+      }
+      if (results.length > 2000) break;
+    }
+  }
+
+  // compute geometry
+  for (const r of results) {
+    const [px, py] = hilbertD2xy(order, r.p);
+    const [qx, qy] = hilbertD2xy(order, r.q);
+    const [mx, my] = hilbertD2xy(order, r.prod);
+    r.pxy = [px, py]; r.qxy = [qx, qy]; r.mxy = [mx, my];
+    // signed area via cross product / 2
+    r.area = Math.abs((qx - px) * (my - py) - (mx - px) * (qy - py)) / 2;
+    r.cx = (px + qx + mx) / 3;
+    r.cy = (py + qy + my) / 3;
+    const d1 = Math.hypot(qx - px, qy - py);
+    const d2 = Math.hypot(mx - px, my - py);
+    const d3 = Math.hypot(mx - qx, my - qy);
+    r.perimeter = d1 + d2 + d3;
+  }
+
+  // sort
+  const sortMode = document.getElementById('ctrlSort').value;
+  if (sortMode === 'product') results.sort((a, b) => a.prod - b.prod);
+  else if (sortMode === 'area') results.sort((a, b) => b.area - a.area);
+  else if (sortMode === 'q') results.sort((a, b) => a.q - b.q);
+  else if (sortMode === 'perimeter') results.sort((a, b) => b.perimeter - a.perimeter);
+
+  return results.slice(0, maxCount);
+}
+
+/* ── Color by area ── */
+function areaColor(t) {
+  // t in [0,1] → blue to cyan to yellow
+  if (t < 0.5) {
+    const u = t * 2;
+    return `rgb(${Math.round(30 + 95 * u)},${Math.round(80 + 131 * u)},${Math.round(180 + 72 * u)})`;
+  } else {
+    const u = (t - 0.5) * 2;
+    return `rgb(${Math.round(125 + 125 * u)},${Math.round(211 + 33 * u)},${Math.round(252 - 237 * u)})`;
+  }
+}
+
+function drawLegend() {
+  const c = document.getElementById('legendCanvas');
+  const ctx = c.getContext('2d');
+  for (let x = 0; x < 80; x++) {
+    ctx.fillStyle = areaColor(x / 79);
+    ctx.fillRect(x, 0, 1, 8);
+  }
+}
+
+/* ── Draw Hilbert curve (small thumbnail) ── */
+function drawThumb(canvas, item, allItems) {
+  const size = 120;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const side = 1 << order;
+  const cell = size / side;
+  const half = cell / 2;
+
+  // bg
+  ctx.fillStyle = '#0e0e12';
+  ctx.fillRect(0, 0, size, size);
+
+  // draw faint grid curve
+  ctx.strokeStyle = '#1e1e2a';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  for (let d = 0; d < N; d++) {
+    const [x, y] = hilbertD2xy(order, d);
+    const px = x * cell + half, py = (side - 1 - y) * cell + half;
+    if (d === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // normalise area for color
+  const maxArea = Math.max(...allItems.map(i => i.area), 1);
+  const t = item.area / maxArea;
+  const col = areaColor(t);
+
+  // draw triangle
+  const toScreen = ([x, y]) => [x * cell + half, (side - 1 - y) * cell + half];
+  const [p1, p2, p3] = [toScreen(item.pxy), toScreen(item.qxy), toScreen(item.mxy)];
+
+  ctx.fillStyle = col + '30';
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p1[0], p1[1]);
+  ctx.lineTo(p2[0], p2[1]);
+  ctx.lineTo(p3[0], p3[1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // dots
+  const dotR = Math.max(2, cell * 0.35);
+  ctx.fillStyle = '#7dd3fc';
+  ctx.beginPath(); ctx.arc(p1[0], p1[1], dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7dd3fc';
+  ctx.beginPath(); ctx.arc(p2[0], p2[1], dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath(); ctx.arc(p3[0], p3[1], dotR, 0, Math.PI * 2); ctx.fill();
+}
+
+/* ── Draw detail view ── */
+function drawDetail(item) {
+  if (!item) return;
+  document.getElementById('emptyMsg').style.display = 'none';
+  const canvas = document.getElementById('detailCanvas');
+  const wrap = canvas.parentElement;
+  const dim = Math.min(wrap.clientWidth - 16, wrap.clientHeight - 16, 600);
+  canvas.width = dim; canvas.height = dim;
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  const side = 1 << order;
+  const cell = dim / side;
+  const half = cell / 2;
+
+  // bg
+  ctx.fillStyle = '#0e0e12';
+  ctx.fillRect(0, 0, dim, dim);
+
+  const toScreen = ([x, y]) => [x * cell + half, (side - 1 - y) * cell + half];
+
+  // draw full curve faintly
+  ctx.strokeStyle = '#1e1e2a';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (let d = 0; d < N; d++) {
+    const [x, y] = hilbertD2xy(order, d);
+    const px = x * cell + half, py = (side - 1 - y) * cell + half;
+    if (d === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // draw "fuse" path from 0 to p*q
+  const fuseEnd = item.prod;
+  ctx.strokeStyle = '#facc1540';
+  ctx.lineWidth = Math.max(1.2, cell * 0.25);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let d = 0; d <= fuseEnd; d++) {
+    const [x, y] = hilbertD2xy(order, d);
+    const px = x * cell + half, py = (side - 1 - y) * cell + half;
+    if (d === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // highlight p and q on fuse
+  ctx.strokeStyle = '#7dd3fc50';
+  ctx.lineWidth = Math.max(1, cell * 0.18);
+
+  // draw triangle fill
+  const [p1, p2, p3] = [toScreen(item.pxy), toScreen(item.qxy), toScreen(item.mxy)];
+  ctx.fillStyle = '#7dd3fc18';
+  ctx.strokeStyle = '#7dd3fc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p1[0], p1[1]);
+  ctx.lineTo(p2[0], p2[1]);
+  ctx.lineTo(p3[0], p3[1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // edge labels
+  ctx.font = `${Math.max(9, cell * 0.7)}px Inter, system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  // label triangle edges with lengths
+  const edges = [
+    { a: p1, b: p2, label: `p→q` },
+    { a: p1, b: p3, label: `p→pq` },
+    { a: p2, b: p3, label: `q→pq` }
+  ];
+
+  // vertices: big dots with labels
+  const dotR = Math.max(4, cell * 0.4);
+
+  // p
+  ctx.fillStyle = '#7dd3fc';
+  ctx.beginPath(); ctx.arc(p1[0], p1[1], dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7dd3fc';
+  ctx.font = `bold ${Math.max(11, cell * 0.85)}px Inter, system-ui, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(`p=${item.p}`, p1[0] + dotR + 3, p1[1] - dotR - 2);
+
+  // q
+  ctx.fillStyle = '#60e0a0';
+  ctx.beginPath(); ctx.arc(p2[0], p2[1], dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#60e0a0';
+  ctx.textAlign = 'right';
+  ctx.fillText(`q=${item.q}`, p2[0] - dotR - 3, p2[1] - dotR - 2);
+
+  // p*q
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath(); ctx.arc(p3[0], p3[1], dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#facc15';
+  ctx.textAlign = 'center';
+  ctx.fillText(`p×q=${item.prod}`, p3[0], p3[1] + dotR + Math.max(10, cell * 0.8));
+
+  // title
+  document.getElementById('detailTitle').textContent =
+    `Detail: ${item.p} × ${item.q} = ${item.prod}`;
+
+  // stats
+  const statsEl = document.getElementById('detailStats');
+  const d1 = Math.hypot(item.qxy[0] - item.pxy[0], item.qxy[1] - item.pxy[1]);
+  const d2 = Math.hypot(item.mxy[0] - item.pxy[0], item.mxy[1] - item.pxy[1]);
+  const d3 = Math.hypot(item.mxy[0] - item.qxy[0], item.mxy[1] - item.qxy[1]);
+  const stats = [
+    ['p (prime)', item.p, 'prime'],
+    ['q (prime)', item.q, 'prime'],
+    ['p × q', item.prod, 'product'],
+    ['Hilbert(p)', `(${item.pxy[0]}, ${item.pxy[1]})`, ''],
+    ['Hilbert(q)', `(${item.qxy[0]}, ${item.qxy[1]})`, ''],
+    ['Hilbert(p×q)', `(${item.mxy[0]}, ${item.mxy[1]})`, ''],
+    ['Triangle Area', item.area.toFixed(2) + ' cells²', ''],
+    ['Perimeter', item.perimeter.toFixed(2) + ' cells', ''],
+    ['Centroid', `(${item.cx.toFixed(1)}, ${item.cy.toFixed(1)})`, ''],
+    ['Edge p→q', d1.toFixed(2), ''],
+    ['Edge p→pq', d2.toFixed(2), ''],
+    ['Edge q→pq', d3.toFixed(2), ''],
+  ];
+  statsEl.innerHTML = stats.map(([label, val, cls]) =>
+    `<span class="stat-label">${label}</span><span class="stat-value ${cls}">${val}</span>`
+  ).join('');
+}
+
+/* ── Build grid ── */
+let currentItems = [];
+let selectedIdx = -1;
+
+function buildGrid() {
+  const container = document.getElementById('gridContainer');
+  container.innerHTML = '';
+  currentItems = getSemiprimes();
+  selectedIdx = -1;
+
+  const mode = document.getElementById('ctrlMode').value;
+  const fixed = document.getElementById('ctrlFixed').value;
+  const info = document.getElementById('gridInfo');
+  if (mode === 'fixP') info.textContent = `p=${fixed} fixed · ${currentItems.length} semiprimes`;
+  else if (mode === 'fixQ') info.textContent = `q=${fixed} fixed · ${currentItems.length} semiprimes`;
+  else info.textContent = `All semiprimes · showing ${currentItems.length}`;
+
+  for (let i = 0; i < currentItems.length; i++) {
+    const item = currentItems[i];
+    const div = document.createElement('div');
+    div.className = 'thumb';
+    div.dataset.idx = i;
+    const canvas = document.createElement('canvas');
+    drawThumb(canvas, item, currentItems);
+    div.appendChild(canvas);
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.innerHTML = `<b>${item.p}×${item.q}</b>=${item.prod} △${item.area.toFixed(1)}`;
+    div.appendChild(lbl);
+    div.addEventListener('click', () => selectThumb(i));
+    container.appendChild(div);
+  }
+
+  // auto-select first
+  if (currentItems.length > 0) selectThumb(0);
+  else {
+    document.getElementById('emptyMsg').style.display = 'block';
+    document.getElementById('detailCanvas').style.display = 'none';
+    document.getElementById('detailStats').innerHTML = '';
+    document.getElementById('detailTitle').textContent = 'Detail View';
+  }
+}
+
+function selectThumb(idx) {
+  const container = document.getElementById('gridContainer');
+  if (selectedIdx >= 0) {
+    const prev = container.querySelector(`.thumb[data-idx="${selectedIdx}"]`);
+    if (prev) prev.classList.remove('selected');
+  }
+  selectedIdx = idx;
+  const el = container.querySelector(`.thumb[data-idx="${idx}"]`);
+  if (el) { el.classList.add('selected'); el.scrollIntoView({ block: 'nearest' }); }
+  drawDetail(currentItems[idx]);
+}
+
+/* ── Events ── */
+document.getElementById('ctrlOrder').addEventListener('change', init);
+document.getElementById('ctrlMode').addEventListener('change', () => {
+  const mode = document.getElementById('ctrlMode').value;
+  document.getElementById('ctrlFixed').parentElement.style.display =
+    mode === 'all' ? 'none' : '';
+  buildGrid();
+});
+document.getElementById('ctrlFixed').addEventListener('change', buildGrid);
+document.getElementById('ctrlSort').addEventListener('change', buildGrid);
+document.getElementById('ctrlGrid').addEventListener('change', buildGrid);
+
+// resize detail
+window.addEventListener('resize', () => {
+  if (selectedIdx >= 0 && currentItems[selectedIdx]) drawDetail(currentItems[selectedIdx]);
+});
+
+/* ── Boot ── */
+drawLegend();
+init();
+</script>
+</body>
+</html>
