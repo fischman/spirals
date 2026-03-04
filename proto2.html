@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proto 2: Animated Fuse Burn</title>
+<style>
+  head, style, script { display: none !important; }
+  :root { --bg: #0e0e12; --fg: #d4d4d8; --accent: #7dd3fc; --dim: #8a8a96; --hi: #facc15; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif; display: flex; }
+  #sidebar { width: 280px; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    border-right: 1px solid #333; overflow-y: auto; flex-shrink: 0; }
+  #sidebar h2 { color: var(--accent); font-size: 1.1rem; }
+  label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  select, input[type=range], button { background: #1a1a22; color: var(--fg); border: 1px solid #555;
+    border-radius: 5px; padding: 4px 8px; font-size: 0.85rem; }
+  button { cursor: pointer; transition: background 0.15s; }
+  button:hover { background: #2a2a34; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row label { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  #queue { list-style: none; font-size: 0.8rem; }
+  #queue li { padding: 4px 6px; border-radius: 4px; margin: 2px 0; display: flex;
+    justify-content: space-between; align-items: center; cursor: pointer; }
+  #queue li:hover { background: #2a2a34; }
+  #queue li .swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+  #queue li .rm { color: var(--dim); cursor: pointer; font-size: 1rem; }
+  #queue li .rm:hover { color: #f66; }
+  #stats { font-size: 0.78rem; color: var(--dim); line-height: 1.5; }
+  #stats b { color: var(--fg); }
+  #canvasWrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  canvas { background: #111117; border-radius: 8px; }
+  .controls-row { display: flex; gap: 6px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h2>🔥 Fuse Burn</h2>
+  <div class="row">
+    <label>p <select id="selP"></select></label>
+    <label>q <select id="selQ"></select></label>
+  </div>
+  <div>Product: <b id="prodLabel">6</b></div>
+  <div class="row">
+    <label>Order <input type="range" id="orderSlider" min="3" max="8" value="5"></label>
+    <span id="orderVal">5</span>
+  </div>
+  <div class="row">
+    <label>Speed <input type="range" id="speedSlider" min="1" max="100" value="50"></label>
+  </div>
+  <div class="controls-row">
+    <button id="btnPlay">▶ Play</button>
+    <button id="btnAdd">+ Add to Queue</button>
+    <button id="btnZoom">⊞ Zoom to Fit</button>
+  </div>
+  <div><label>Queue</label></div>
+  <ul id="queue"></ul>
+  <div id="stats"></div>
+</div>
+<div id="canvasWrap"><canvas id="c"></canvas></div>
+
+<script>
+"use strict";
+
+function hilbertD2xy(order, d) {
+  let x = 0, y = 0, t;
+  for (let s = 1; s < (1 << order); s <<= 1) {
+    const rx = (d >>> 1) & 1;
+    const ry = (d ^ rx) & 1;
+    if (ry === 0) {
+      if (rx === 1) { x = s - 1 - x; y = s - 1 - y; }
+      t = x; x = y; y = t;
+    }
+    x += s * rx; y += s * ry; d >>>= 2;
+  }
+  return [x, y];
+}
+
+function makeSieve(max) {
+  const s = new Uint8Array(max + 1);
+  if (max >= 2) s[2] = 1;
+  for (let i = 3; i <= max; i += 2) s[i] = 1;
+  for (let i = 3; i * i <= max; i += 2)
+    if (s[i]) for (let j = i * i; j <= max; j += 2 * i) s[j] = 0;
+  return s;
+}
+
+// Generate first N primes
+function firstNPrimes(n) {
+  const primes = [];
+  const sv = makeSieve(n * 12); // generous upper bound
+  for (let i = 2; i < sv.length && primes.length < n; i++)
+    if (sv[i]) primes.push(i);
+  return primes;
+}
+
+const PRIMES = firstNPrimes(50);
+const COLORS = [
+  '#facc15', '#7dd3fc', '#f472b6', '#34d399', '#fb923c',
+  '#a78bfa', '#f87171', '#38bdf8', '#4ade80', '#fbbf24',
+  '#e879f9', '#2dd4bf', '#f97316', '#818cf8', '#fb7185'
+];
+
+// Populate dropdowns
+const selP = document.getElementById('selP');
+const selQ = document.getElementById('selQ');
+PRIMES.forEach(p => {
+  selP.add(new Option(p, p));
+  selQ.add(new Option(p, p));
+});
+selP.value = '2'; selQ.value = '3';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const dpr = window.devicePixelRatio || 1;
+
+let order = 5;
+let viewX = 0, viewY = 0, viewScale = 1;
+let queue = []; // [{p, q, product, color}]
+let fuseProgress = -1; // -1 = not animating, else index into curve
+let fuseTarget = null; // {p, q, product, color}
+let animFrame = null;
+let fuseSpeed = 50;
+
+// Triangle morph state
+let currentTriangle = null; // {px, py, qx, qy, nx, ny}
+let targetTriangle = null;
+let morphT = 1;
+
+function sizeCanvas() {
+  const r = wrap.getBoundingClientRect();
+  const sz = Math.floor(Math.min(r.width, r.height)) - 8;
+  canvas.width = sz * dpr; canvas.height = sz * dpr;
+  canvas.style.width = sz + 'px'; canvas.style.height = sz + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return sz;
+}
+
+function getN() { return 1 << order; }
+function totalCells() { return getN() * getN(); }
+
+function autoOrder(product) {
+  let o = 1;
+  while ((1 << o) * (1 << o) <= product) o++;
+  return Math.max(3, Math.min(8, o));
+}
+
+// Compute curve path (all points)
+function curvePath() {
+  const total = totalCells();
+  const pts = [];
+  for (let i = 0; i < total; i++) pts.push(hilbertD2xy(order, i));
+  return pts;
+}
+
+function triangleArea(x1,y1,x2,y2,x3,y3) {
+  return Math.abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1)) / 2;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function draw() {
+  const sz = sizeCanvas();
+  const N = getN();
+  const pad = 30;
+  const cellSz = (sz - 2 * pad) / (N - 1 || 1);
+
+  function tx(x) { return pad + x * cellSz; }
+  function ty(y) { return pad + (N - 1 - y) * cellSz; }
+
+  ctx.clearRect(0, 0, sz, sz);
+
+  // Draw Hilbert curve path
+  const pts = curvePath();
+  ctx.strokeStyle = '#7dd3fc22';
+  ctx.lineWidth = Math.max(0.5, cellSz * 0.3);
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const [x, y] = pts[i];
+    i === 0 ? ctx.moveTo(tx(x), ty(y)) : ctx.lineTo(tx(x), ty(y));
+  }
+  ctx.stroke();
+
+  // Draw grid dots for small orders
+  if (N <= 32) {
+    ctx.fillStyle = '#44444e';
+    for (let i = 0; i < pts.length; i++) {
+      const [x, y] = pts[i];
+      ctx.beginPath();
+      ctx.arc(tx(x), ty(y), Math.max(1, cellSz * 0.15), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Draw completed queue items (static triangles)
+  for (const item of queue) {
+    drawTriangle(item, tx, ty, sz, 0.25);
+  }
+
+  // Draw fuse if animating
+  if (fuseTarget && fuseProgress >= 0) {
+    const color = fuseTarget.color;
+    // Fuse trail
+    ctx.strokeStyle = color + '66';
+    ctx.lineWidth = Math.max(1.5, cellSz * 0.5);
+    ctx.beginPath();
+    const limit = Math.min(fuseProgress, pts.length - 1);
+    for (let i = 0; i <= limit; i++) {
+      const [x, y] = pts[i];
+      i === 0 ? ctx.moveTo(tx(x), ty(y)) : ctx.lineTo(tx(x), ty(y));
+    }
+    ctx.stroke();
+
+    // Bright tip
+    if (limit > 0) {
+      const tipLen = Math.min(20, limit);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(2, cellSz * 0.6);
+      ctx.beginPath();
+      for (let i = Math.max(0, limit - tipLen); i <= limit; i++) {
+        const [x, y] = pts[i];
+        i === Math.max(0, limit - tipLen) ? ctx.moveTo(tx(x), ty(y)) : ctx.lineTo(tx(x), ty(y));
+      }
+      ctx.stroke();
+    }
+
+    // Mark p and q if reached
+    const ft = fuseTarget;
+    if (ft.p - 1 <= limit) {
+      const [px, py] = hilbertD2xy(order, ft.p - 1);
+      drawMarker(tx(px), ty(py), `p=${ft.p}`, '#7dd3fc', cellSz);
+    }
+    if (ft.q - 1 <= limit) {
+      const [qx, qy] = hilbertD2xy(order, ft.q - 1);
+      drawMarker(tx(qx), ty(qy), `q=${ft.q}`, '#34d399', cellSz);
+    }
+    if (limit >= ft.product - 1) {
+      const [nx, ny] = hilbertD2xy(order, ft.product - 1);
+      drawMarker(tx(nx), ty(ny), `${ft.p}×${ft.q}=${ft.product}`, color, cellSz);
+      // Draw triangle
+      drawTriangle(ft, tx, ty, sz, 0.4);
+    }
+  }
+
+  // Morphing triangle
+  if (currentTriangle && morphT < 1) {
+    // interpolating old→new, handled via the fuse already
+  }
+
+  updateStats();
+}
+
+function drawMarker(sx, sy, label, color, cellSz) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(sx, sy, Math.max(3, cellSz * 0.4), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Label
+  ctx.font = `bold ${Math.max(9, Math.min(13, cellSz * 0.8))}px system-ui`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  // Background pill
+  const m = ctx.measureText(label);
+  const lx = sx + 6, ly = sy - 6;
+  ctx.fillStyle = '#0e0e12cc';
+  ctx.fillRect(lx - 2, ly - m.actualBoundingBoxAscent - 2, m.width + 4, m.actualBoundingBoxAscent + 4);
+  ctx.fillStyle = color;
+  ctx.fillText(label, lx, ly);
+}
+
+function drawTriangle(item, tx, ty, sz, alpha) {
+  if (item.product - 1 >= totalCells()) return;
+  const [px, py] = hilbertD2xy(order, item.p - 1);
+  const [qx, qy] = hilbertD2xy(order, item.q - 1);
+  const [nx, ny] = hilbertD2xy(order, item.product - 1);
+  const color = item.color;
+
+  // Parse color for alpha
+  ctx.fillStyle = color + Math.round(alpha * 40).toString(16).padStart(2, '0');
+  ctx.beginPath();
+  ctx.moveTo(tx(px), ty(py));
+  ctx.lineTo(tx(qx), ty(qy));
+  ctx.lineTo(tx(nx), ty(ny));
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function updateStats() {
+  const el = document.getElementById('stats');
+  const p = +selP.value, q = +selQ.value, prod = p * q;
+  if (prod >= totalCells()) {
+    el.innerHTML = `<b style="color:#f66">Product ${prod} exceeds order ${order} capacity (${totalCells()}). Increase order.</b>`;
+    return;
+  }
+  const [px, py] = hilbertD2xy(order, p - 1);
+  const [qx, qy] = hilbertD2xy(order, q - 1);
+  const [nx, ny] = hilbertD2xy(order, prod - 1);
+  const area = triangleArea(px, py, qx, qy, nx, ny);
+  el.innerHTML = `
+    <b>p = ${p}</b> → (${px}, ${py})<br>
+    <b>q = ${q}</b> → (${qx}, ${qy})<br>
+    <b>p×q = ${prod}</b> → (${nx}, ${ny})<br>
+    Triangle area: <b>${area.toFixed(1)}</b> cells²<br>
+    Queue: <b>${queue.length}</b> items
+  `;
+}
+
+function updateProduct() {
+  document.getElementById('prodLabel').textContent = (+selP.value) * (+selQ.value);
+}
+
+// Animation
+function startFuseAnimation(item) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  fuseTarget = item;
+  fuseProgress = 0;
+  const targetIdx = item.product - 1;
+  const stepsPerFrame = Math.max(1, Math.floor(fuseSpeed / 5));
+
+  function step() {
+    fuseProgress += stepsPerFrame;
+    if (fuseProgress >= targetIdx) {
+      fuseProgress = targetIdx;
+      draw();
+      animFrame = null;
+      // After completion, check queue for next
+      return;
+    }
+    draw();
+    animFrame = requestAnimationFrame(step);
+  }
+  animFrame = requestAnimationFrame(step);
+}
+
+// Play current selection
+document.getElementById('btnPlay').addEventListener('click', () => {
+  const p = +selP.value, q = +selQ.value;
+  const prod = p * q;
+  if (prod >= totalCells()) { alert('Product exceeds curve capacity. Increase order.'); return; }
+  const color = COLORS[queue.length % COLORS.length];
+  startFuseAnimation({ p, q, product: prod, color });
+});
+
+// Add to queue
+document.getElementById('btnAdd').addEventListener('click', () => {
+  const p = +selP.value, q = +selQ.value;
+  const prod = p * q;
+  if (prod >= totalCells()) { alert('Product exceeds curve capacity. Increase order.'); return; }
+  const color = COLORS[queue.length % COLORS.length];
+  queue.push({ p, q, product: prod, color });
+  renderQueue();
+  draw();
+});
+
+// Zoom to fit
+document.getElementById('btnZoom').addEventListener('click', () => {
+  // Just redraw - already fits by default
+  draw();
+});
+
+function renderQueue() {
+  const ul = document.getElementById('queue');
+  ul.innerHTML = '';
+  queue.forEach((item, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="swatch" style="background:${item.color}"></span>
+      <span>${item.p} × ${item.q} = ${item.product}</span>
+      <span class="rm" data-i="${i}">×</span>`;
+    li.querySelector('.rm').addEventListener('click', e => {
+      e.stopPropagation();
+      queue.splice(i, 1);
+      renderQueue();
+      draw();
+    });
+    li.addEventListener('click', () => startFuseAnimation(item));
+    ul.appendChild(li);
+  });
+}
+
+// Play all in queue sequentially
+function playQueue(idx) {
+  if (idx >= queue.length) return;
+  fuseTarget = queue[idx];
+  fuseProgress = 0;
+  const targetIdx = fuseTarget.product - 1;
+  const stepsPerFrame = Math.max(1, Math.floor(fuseSpeed / 5));
+  function step() {
+    fuseProgress += stepsPerFrame;
+    if (fuseProgress >= targetIdx) {
+      fuseProgress = targetIdx;
+      draw();
+      setTimeout(() => playQueue(idx + 1), 500);
+      return;
+    }
+    draw();
+    animFrame = requestAnimationFrame(step);
+  }
+  animFrame = requestAnimationFrame(step);
+}
+
+// Controls
+const orderSlider = document.getElementById('orderSlider');
+const orderVal = document.getElementById('orderVal');
+orderSlider.addEventListener('input', () => {
+  order = +orderSlider.value;
+  orderVal.textContent = order;
+  fuseProgress = -1; fuseTarget = null;
+  draw();
+});
+
+document.getElementById('speedSlider').addEventListener('input', e => {
+  fuseSpeed = +e.target.value;
+});
+
+selP.addEventListener('change', () => { updateProduct(); draw(); });
+selQ.addEventListener('change', () => { updateProduct(); draw(); });
+
+// Init
+new ResizeObserver(() => draw()).observe(wrap);
+updateProduct();
+draw();
+</script>
+</body>
+</html>
